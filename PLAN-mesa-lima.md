@@ -1,5 +1,18 @@
 # PLAN-mesa-lima.md — from "attached" to "rendered"
 
+> **SUPERSEDED 2026-08-20 — read this first.** This document is the plan from
+> before any of it worked, kept for its reasoning, and its headline statements are
+> now FALSE. Specifically: "Nothing has rendered. No GP or PP job has ever been
+> submitted; no Mesa/lima userland exists anywhere in this project" (§ near the
+> top) and "Mesa is not a realistic near-term milestone" (§ near the end) were
+> both overtaken. The Mali-400 renders — `tests/limabench.c` passes 4/4 with a
+> sampled texture, 2420 draw calls, depth testing and alpha blending, zero GPU
+> MMU faults — and Mesa 26.2's lima gallium driver runs on this port unmodified,
+> giving EGL 1.5 and GLES 2.0. What is still open is in `LOOSE-ENDS.md`, not here.
+> The value left in this file is the route it mapped and the signals it defined,
+> several of which are exactly what ended up proving the thing worked.
+
+
 **Written:** 2026-08-11. **Author context:** planning-only pass, no builds, no board
 access. Every path cited below was actually read while writing this; anything not
 backed by a read is labelled **ASSUMPTION**.

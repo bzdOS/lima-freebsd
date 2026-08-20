@@ -1,8 +1,15 @@
 # Mali-400 / lima on-hardware tests
 
-Off-screen only. lima is render-only (`DRIVER_RENDER`, no `MODESET`) and this
-board has no FreeBSD display driver, so both tests render into an FBO and read the
-pixels back. Nothing appears on a monitor by this path.
+Off-screen only. lima is render-only (`DRIVER_RENDER`, no `MODESET`), so both
+tests render into an FBO and read the pixels back — nothing appears on a monitor
+by this path, and that is deliberate: it makes them usable on any board with no
+display bring-up at all.
+
+(Updated 2026-08-20: "this board has no FreeBSD display driver" is no longer
+true in the project these tests came from — output does reach a monitor there,
+through a separate KMS driver that is not part of this repository. The tests
+below are unaffected and still the right first thing to run, because they answer
+"is the GPU rasterising" without depending on any display path.)
 
 | test | what it proves |
 |---|---|
