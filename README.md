@@ -152,6 +152,50 @@ has, and power management beyond what bring-up needed.
 
 ---
 
+## Can you use this on your own board?
+
+Today: **yes if you are willing to port, no if you want a package.** Being honest
+about where the wall is saves you the afternoon it cost to find it.
+
+What you must do now:
+
+1. Clone this repo.
+2. Get `freebsd-src` at `releng/15.1` and drm-kmod at tag `drm_v6.6.25_13`.
+3. Apply the patches in `patches/freebsd-src/` and `patches/drm-kmod/` to those
+   trees. The kernel ones are not optional: without the
+   `dma_alloc_coherent` cache-attribute fix you get a black frame and no error
+   message anywhere, and without the Allwinner clock fix the GPU's PLL cannot be
+   enabled at all.
+4. Build (recipe above) and `kldload lima`. `/dev/dri/card0` and
+   `/dev/dri/renderD128` should appear; `tests/limatri` and `tests/limabench`
+   will tell you whether the GPU is actually rasterising.
+5. **Then hit the wall: userland.** FreeBSD's packaged Mesa cannot drive this
+   GPU. `mesa-dri` ships 49 `*_dri.so`, but they are symlinks to one loader, and
+   the `libgallium` behind it contains the string `lima: driver missing` — lima
+   is in the loader's device table and simply not compiled in, where `panfrost`
+   is. So you must hand-build Mesa with `-Dgallium-drivers=lima`, into a prefix
+   that a later `pkg install` will not overwrite. Note `pkg lock` does not help:
+   it locks an installed *package*, and a hand-built Mesa is not one.
+
+Three things would turn that into something an ordinary FreeBSD user can
+install, in rising order of effort:
+
+- **Enable `lima` in the `graphics/mesa-dri` port** (`GALLIUM_DRIVERS`), so
+  `pkg install mesa-dri` produces a userland that works. `panfrost` is already
+  enabled there, so the precedent and the machinery both exist. This is the
+  single highest-leverage change and it is not in this repo — it belongs in the
+  FreeBSD ports tree.
+- **Upstream the eight patches** (see above), so step 3 disappears.
+- **Upstream the driver into drm-kmod**, so step 1 disappears too. The two
+  infrastructure pieces here (`drm/drm_gem_shmem_helper.c` and
+  `linux/platform_device.{c,h}`) are the parts drm-kmod would need regardless,
+  and they are useful to every other SoC DRM driver anyone tries to port next —
+  which is a better argument for taking them than lima itself.
+
+If you only want to read something: `LOOSE-ENDS.md` is the register of what is
+still wrong, and the `patches/UPSTREAM-*.md` write-ups each trace one bug from
+symptom to root cause on real hardware.
+
 ## Where this came from
 
 Developed as part of **bzdOS / Chimp** — a from-scratch bare-metal **EL2
