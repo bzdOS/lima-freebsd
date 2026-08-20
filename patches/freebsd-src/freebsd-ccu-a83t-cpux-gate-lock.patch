@@ -1,0 +1,65 @@
+From 68fe3114f6dce0d5fbbf805eaadbb1805b5582d3 Mon Sep 17 00:00:00 2001
+From: Andrey Bodrov <ap.bodrov@gmail.com>
+Date: Tue, 18 Aug 2026 10:21:14 +0300
+Subject: [PATCH] aw_ccung: fix transposed gate/lock args on A83T CPUX PLLs
+
+NKMP_CLK() takes _gate, then _lock, _lock_retries:
+
+    _p_shift, _p_width, _p_value, _p_flags,
+    _gate,
+    _lock, _lock_retries,
+    _flags
+
+pll_c0cpux_clk and pll_c1cpux_clk passed them in the other order, matching their
+own comments rather than the macro:
+
+    0, 0,     /* lock */
+    31,       /* gate */
+
+so gate_shift became 0, lock_shift 0, and lock_retries 31. With
+AW_CLK_HAS_GATE set, enabling or disabling either CPUX PLL writes bit 0 of
+PLL_C0CPUX_CTRL/PLL_C1CPUX_CTRL instead of bit 31 -- it never touches the PLL
+enable, and it stomps bit 0 instead.
+
+The file contradicts itself, which is what makes this unambiguous: every other
+NKMP_CLK entry in ccu_a83t.c (lines 238, 251, 264, 277) already passes
+gate before lock. Only these two are reversed. All six now read the same way.
+
+Found while chasing a related defect in ccu_a64.c, where every FRAC_CLK omitted
+AW_CLK_HAS_GATE entirely and left PLL_GPU permanently off -- the Mali-400 on
+that SoC could not be powered up at all. Same family of bug, different shape:
+there the gate was never written, here it is written to the wrong bit.
+
+Not tested on A83T hardware -- I have none. The evidence is the macro signature
+and the file's own internal inconsistency.
+---
+ sys/dev/clk/allwinner/ccu_a83t.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/sys/dev/clk/allwinner/ccu_a83t.c b/sys/dev/clk/allwinner/ccu_a83t.c
+index bc94250ba..024ec3353 100644
+--- a/sys/dev/clk/allwinner/ccu_a83t.c
++++ b/sys/dev/clk/allwinner/ccu_a83t.c
+@@ -211,8 +211,8 @@ NKMP_CLK(pll_c0cpux_clk,
+     0, 0, 1, AW_CLK_FACTOR_FIXED,		/* k factor (fake) */
+     0, 0, 1, AW_CLK_FACTOR_FIXED,		/* m factor */
+     0, 0, 1, AW_CLK_FACTOR_FIXED,		/* p factor (fake) */
+-    0, 0,					/* lock */
+     31,						/* gate */
++    0, 0,					/* lock */
+     AW_CLK_HAS_GATE | AW_CLK_SCALE_CHANGE);	/* flags */
+ NKMP_CLK(pll_c1cpux_clk,
+     CLK_PLL_C1CPUX,				/* id */
+@@ -222,8 +222,8 @@ NKMP_CLK(pll_c1cpux_clk,
+     0, 0, 1, AW_CLK_FACTOR_FIXED,		/* k factor (fake) */
+     0, 0, 1, AW_CLK_FACTOR_FIXED,		/* m factor */
+     0, 0, 1, AW_CLK_FACTOR_FIXED,		/* p factor (fake) */
+-    0, 0,					/* lock */
+     31,						/* gate */
++    0, 0,					/* lock */
+     AW_CLK_HAS_GATE | AW_CLK_SCALE_CHANGE);	/* flags */
+ 
+ static const char *pll_audio_parents[] = {"osc24M"};
+-- 
+2.55.0
+

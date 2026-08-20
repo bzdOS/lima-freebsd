@@ -1,0 +1,136 @@
+--- a/include/drm/drm_file.h
++++ b/include/drm/drm_file.h
+@@ -81,6 +81,25 @@
+ 
+ #ifdef __FreeBSD__
+ 	struct cdev *bsd_device; 	/* Device number for mknod */
++	/*
++	 * The /dev/dri/<cardN|renderDN> alias created by drm_dev_alias()
++	 * (drm_os_freebsd.c) on top of bsd_device.  Kept here so it can be
++	 * destroyed again when the minor is released.
++	 *
++	 * bzdOS 2026-08-11: it previously was not kept anywhere, and nothing
++	 * destroyed it — not drm_dev_put(), not drm_dev_unregister(), not module
++	 * unload.  Combined with drm_dev_alias() using make_dev_alias() (which
++	 * PANICS on a duplicate name rather than returning EEXIST), that made a
++	 * second drm_dev_alloc() for the same minor index in one boot a kernel
++	 * panic.  Any driver whose probe fails after drm_dev_alloc() and is then
++	 * retried — the normal state of affairs while bringing a new driver up —
++	 * takes the machine down on the retry:
++	 *
++	 *   panic: make_dev_alias_v: bad si_name (error=17, si_name=dri/renderD128)
++	 *     make_dev_alias <- drm_dev_alias <- drm_sysfs_minor_alloc
++	 *     <- drm_minor_alloc <- drm_dev_init <- drm_dev_alloc <- lima_pdev_probe
++	 */
++	struct cdev *bsd_alias;
+ #endif
+ 	struct dentry *debugfs_root;
+ 
+--- a/drivers/gpu/drm/drm_os_freebsd.h
++++ b/drivers/gpu/drm/drm_os_freebsd.h
+@@ -33,6 +33,9 @@
+ 
+ struct drm_minor;
+ int drm_dev_alias(struct device *dev, struct drm_minor *minor, const char *minor_str);
++/* Destroy the alias drm_dev_alias() created. Idempotent. See its definition in
++ * drm_os_freebsd.c for the panic-on-probe-retry this pairing fixes. */
++void drm_dev_alias_free(struct drm_minor *minor);
+ void cancel_reset_debug_log(void);
+ 
+ void vt_freeze_main_vd(struct apertures_struct *a);
+--- a/drivers/gpu/drm/drm_drv.c
++++ b/drivers/gpu/drm/drm_drv.c
+@@ -104,6 +104,17 @@
+ 	unsigned long flags;
+ 
+ 	WARN_ON(dev != minor->dev);
++
++#ifdef __FreeBSD__
++	/*
++	 * bzdOS 2026-08-11: destroy the /dev/dri alias drm_dev_alias() created.
++	 * Nothing used to, so a driver whose probe failed after drm_dev_alloc()
++	 * left the alias behind and the next probe attempt panicked the kernel in
++	 * make_dev_alias(). This runs on every drm_dev_put(), including the one on
++	 * a failed probe's error path, which is exactly the case that was broken.
++	 */
++	drm_dev_alias_free(minor);
++#endif
+ 
+ 	put_device(minor->kdev);
+ 
+--- a/drivers/gpu/drm/drm_os_freebsd.c
++++ b/drivers/gpu/drm/drm_os_freebsd.c
+@@ -123,6 +123,7 @@
+ 	device_t dev = ldev->parent->bsddev;
+ 	char buf[32];
+ 	u32 tmp;
++	int error;
+ 
+ 	MPASS(dev != NULL);
+ 	ctx_list = device_get_sysctl_ctx(dev);
+@@ -146,9 +147,64 @@
+ 	if (cdevp == NULL)
+ 		return (-ENXIO);
+ 	minor->bsd_device = cdevp->cdev;
+-	make_dev_alias(cdevp->cdev, buf, minor->index);
++
++	/*
++	 * bzdOS 2026-08-11: make_dev_alias_p(MAKEDEV_CHECKNAME) instead of
++	 * make_dev_alias(), and keep the resulting cdev so drm_dev_alias_free()
++	 * can destroy it.
++	 *
++	 * make_dev_alias() is make_dev_alias_v(MAKEDEV_WAITOK, ...) — without
++	 * MAKEDEV_CHECKNAME, kern_conf.c PANICS on a name that already exists
++	 * instead of returning EEXIST.  Since nothing here used to destroy the
++	 * alias, the second drm_dev_alloc() for a given minor index in one boot
++	 * always hit that panic.  A driver whose probe fails after
++	 * drm_dev_alloc() and is retried is the ordinary case during bring-up,
++	 * and it took the whole machine down:
++	 *
++	 *   panic: make_dev_alias_v: bad si_name (error=17, si_name=dri/renderD128)
++	 *
++	 * Returning the error lets drm_sysfs_minor_alloc()'s existing `goto err`
++	 * unwind report a failure the caller can handle, and destroying the alias
++	 * on release means the retry does not collide in the first place.
++	 */
++	/*
++	 * `buf` is a FORMAT ("dri/renderD%d"), not a finished name -- minor_str
++	 * comes from drm_sysfs.c as "card%d"/"renderD%d"/"accel%d" and the index
++	 * is substituted here. Passing "%s", buf instead produces a device
++	 * literally called /dev/dri/renderD%d, which nothing in userland will
++	 * ever open. (Done exactly that once while adding MAKEDEV_CHECKNAME.)
++	 */
++	error = make_dev_alias_p(MAKEDEV_CHECKNAME, &minor->bsd_alias,
++	    cdevp->cdev, buf, minor->index);
++	if (error != 0) {
++		minor->bsd_alias = NULL;
++		minor->bsd_device = NULL;
++		return (-error);
++	}
++
+ 	reset_debug_log();
+ 	return (0);
++}
++
++/*
++ * Destroy the /dev/dri alias created by drm_dev_alias(), if any.  Idempotent:
++ * safe to call on a minor that never got an alias, and safe to call twice.
++ * Called from drm_minor_alloc_release() (drm_drv.c), which runs as a drmm_
++ * action when the drm_device is released — i.e. on drm_dev_put(), including
++ * the drm_dev_put() on a failed probe's error path.
++ */
++void
++drm_dev_alias_free(struct drm_minor *minor)
++{
++	struct cdev *alias;
++
++	if (minor == NULL)
++		return;
++	alias = minor->bsd_alias;
++	if (alias == NULL)
++		return;
++	minor->bsd_alias = NULL;
++	destroy_dev(alias);
+ }
+ 
+ static int

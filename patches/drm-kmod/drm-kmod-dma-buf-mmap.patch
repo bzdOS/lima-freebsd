@@ -1,0 +1,92 @@
+--- a/linuxkpi/gplv2/include/linux/dma-buf.h
++++ b/linuxkpi/gplv2/include/linux/dma-buf.h
+@@ -183,5 +183,12 @@
+ void dma_buf_move_notify(struct dma_buf *);
+ int dma_buf_vmap(struct dma_buf *dmabuf, struct iosys_map *map);
+ void dma_buf_vunmap(struct dma_buf *dmabuf, struct iosys_map *map);
++/*
++ * bzdOS 2026-08-11: the one dma_buf_ops.mmap dispatcher upstream Linux has
++ * that this header never declared. See the definition in dma-buf.c for why
++ * it was missing and what porting it did and did not carry over.
++ */
++int dma_buf_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma,
++    unsigned long pgoff);
+ 
+ #endif /* _LINUX_GPLV2_DMA_BUF_H_ */
+--- a/drivers/dma-buf/dma-buf.c
++++ b/drivers/dma-buf/dma-buf.c
+@@ -756,6 +756,74 @@
+ 	mutex_unlock(&dmabuf->lock);
+ }
+ 
++/*
++ * bzdOS 2026-08-11: dma_buf_mmap() itself was the one piece of the PRIME mmap
++ * chain this file never ported. drivers/gpu/drm/drm_prime.c's
++ * drm_gem_dmabuf_mmap() -> drm_gem_prime_mmap() (both already here, and
++ * already reachable via drm_gem_prime_dmabuf_ops.mmap) exist purely to be
++ * called *by* this function -- with it missing, nothing could ever reach
++ * them: a driver's own GEM mmap handler had no way to hand an imported
++ * dma-buf's vma to dmabuf->ops->mmap in the first place, so every mmap() of
++ * an imported PRIME buffer failed before dma_buf_ops.mmap was ever
++ * consulted, regardless of whether the exporter implemented it.
++ *
++ * Ported from Linux 6.6/6.12 drivers/dma-buf/dma-buf.c with one deliberate
++ * omission. Real Linux additionally does
++ *
++ *     vma_set_file(vma, dmabuf->file);
++ *
++ * so the vma holds its own reference on the dma-buf's file, independent of
++ * whatever handle/fd the caller used to reach this vma (e.g. a vma inherited
++ * across fork(2) after the importing process closed its GEM handle still
++ * keeps the dma-buf, and its pages, alive on Linux).
++ *
++ * That line does not typecheck in this port. dmabuf->file here is a
++ * *native* FreeBSD `struct file *` (see the "Native struct file, not struct
++ * linux_file" comment on `struct dma_buf` in linux/dma-buf.h -- this port's
++ * dma-buf fds are real fd-table entries created by falloc_noinstall()/
++ * finit() in dma_buf_export() above, not linuxkpi char-device shims), while
++ * vma_set_file() (linux/mm.h) takes a `struct linux_file *`, the type
++ * vma->vm_file actually is. The two `struct file` types are unrelated in
++ * linuxkpi; there is no struct linux_file for a dma-buf's own fd to hand it,
++ * and fabricating one would mean inventing lifetime machinery this tree
++ * does not have, not porting Linux's.
++ *
++ * What still holds without it: drm_gem_mmap_obj() (drm_gem.c) takes a
++ * reference on the *importing* GEM object before calling into this chain,
++ * and drm_gem_shmem_mmap()'s import branch (hal/lima/drm/
++ * drm_gem_shmem_helper.c) drops that same reference on success -- exactly
++ * mirroring upstream. For as long as that pairing covers the vma's lifetime
++ * (the ordinary case: map, use, unmap/close), obj->import_attach keeps this
++ * dma_buf alive by itself. What is NOT reproduced is Linux's independent
++ * hold for a vma that outlives the importing handle by some other path
++ * (fork(2) being the obvious one); that path is not proven either way here
++ * -- see hal/lima/patches/README.md for exactly what has and has not been
++ * exercised.
++ */
++int
++dma_buf_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma,
++    unsigned long pgoff)
++{
++
++	if (WARN_ON(!dmabuf || !vma))
++		return (-EINVAL);
++
++	if (!dmabuf->ops->mmap)
++		return (-EINVAL);
++
++	/* Check for offset overflow. */
++	if (pgoff + vma_pages(vma) < pgoff)
++		return (-EOVERFLOW);
++
++	/* Check for overflowing the buffer's size. */
++	if (pgoff + vma_pages(vma) > dmabuf->size >> PAGE_SHIFT)
++		return (-EINVAL);
++
++	vma->vm_pgoff = pgoff;
++
++	return (dmabuf->ops->mmap(dmabuf, vma));
++}
++
+ static void
+ dma_buf_init(void *arg __unused)
+ {
