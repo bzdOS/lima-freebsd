@@ -1,5 +1,16 @@
 # Mesa's lima Gallium driver on FreeBSD/aarch64 — feasibility
 
+> **SUPERSEDED IN PART 2026-08-20 — read this first.** The analysis here is
+> sound and worth reading, but its central open questions have since been
+> ANSWERED on hardware, so do not take its cautions as current status. In
+> particular: the interrupt-driven fence-signal path it flags as "has never
+> fired on this hardware" now does fire, jobs complete, and
+> `drmSyncobjWait()`'s path is exercised on every frame — `tests/limabench.c`
+> passes 4/4 (sampled texture, 2420 draw calls, depth, blending, zero MMU
+> faults) and Mesa 26.2's lima driver runs unmodified on top. Treat this file as
+> the map that got there. Current open items: `LOOSE-ENDS.md`.
+
+
 **Written:** 2026-08-11. Research-only pass: no board access, no kernel/world build,
 no run of `build-lima-arm64.sh`/`build-drm-kmod-arm64.sh`. Everything below was
 either read directly from a pinned Mesa/libdrm/drm-kmod source snapshot, read
