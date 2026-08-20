@@ -1,0 +1,45 @@
+diff --git a/sys/dev/clk/allwinner/ccu_a64.c b/sys/dev/clk/allwinner/ccu_a64.c
+index 779b20a19..4e0d18966 100644
+--- a/sys/dev/clk/allwinner/ccu_a64.c
++++ b/sys/dev/clk/allwinner/ccu_a64.c
+@@ -381,6 +381,31 @@ FRAC_CLK(pll_video1_clk,
+     192000000, 600000000);			/* min freq, max freq */
+ 
+ static const char *pll_gpu_parents[] = {"osc24M"};
++/*
++ * bzdOS 2026-08-11: AW_CLK_HAS_GATE added.
++ *
++ * The gate bit (31) was already declared here, but without AW_CLK_HAS_GATE in
++ * the flags aw_clk_frac_set_gate() returns 0 on its first statement without
++ * touching the register. So clk_enable() on any consumer of pll_gpu reported
++ * success while leaving the PLL off and unlocked -- clknode_enable() does walk
++ * to the parent and call its set_gate, the call simply did nothing.
++ *
++ * Found on a Banana Pi M64 bringing up the Mali-400: the GPU ended up with its
++ * AHB clock and a core-clock gate open onto a dead PLL. Held in reset that reads
++ * back garbage; out of reset the GPU accepts an MMIO transaction, needs its core
++ * clock to complete it, and the read never returns -- the interconnect stalls
++ * and every core goes with it. Measured live: PLL_GPU=0x03006207 (en=0, lock=0)
++ * with GPU_CLK=0x80000000 and BUS_GATE1 bit 20 both set. Setting bit 31 by hand
++ * locks the PLL in ~230us and the same driver load attaches cleanly.
++ *
++ * NOTE: every other FRAC_CLK in this file (pll_video0, pll_ve, pll_video1,
++ * pll_hsic, pll_de) has the same omission, and so does ccu_h3.c. They are
++ * deliberately NOT changed here. Adding the flag also makes clk_disable() able
++ * to GATE them, where today it is a no-op -- and the display path depends on
++ * pll_video0/pll_de staying up, so that is a behaviour change needing its own
++ * testing. pll_gpu is safe to change alone because nothing but a GPU driver
++ * ever touches it, and nothing enables it today at all.
++ */
+ FRAC_CLK(pll_gpu_clk,
+     CLK_PLL_GPU,				/* id */
+     "pll_gpu", pll_gpu_parents,			/* name, parents */
+@@ -388,7 +413,7 @@ FRAC_CLK(pll_gpu_clk,
+     8, 7, 0, 0,					/* n factor */
+     0, 4, 0, 0,					/* m factor */
+     31, 28, 1000,				/* gate, lock, lock retries */
+-    AW_CLK_HAS_LOCK,				/* flags */
++    AW_CLK_HAS_LOCK | AW_CLK_HAS_GATE,		/* flags */
+     270000000, 297000000,			/* freq0, freq1 */
+     24, 25,					/* mode sel, freq sel */
+     192000000, 600000000);			/* min freq, max freq */

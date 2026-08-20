@@ -1,0 +1,69 @@
+drm_sysctl_init: do not assume every DRM device is PCI
+
+drm_add_busid_modesetting() runs for every drm_dev_register() and starts with
+
+	struct pci_dev *pdev = to_pci_dev(dev->dev);
+	domain = pci_domain_nr(pdev->bus);
+	bus    = pdev->bus->number;
+
+which is only valid when the DRM device's parent really is a pci_dev. For a
+platform/SoC DRM driver -- every render-only SoC GPU, and hal/bzkms's
+hypervisor-window KMS device -- to_pci_dev() walks backwards from a struct
+device that is not embedded in a pci_dev, so ->bus is whatever happens to be
+there. On bzdOS/Chimp with a statically allocated parent it is NULL, and
+drm_dev_register() panics reading offset 8:
+
+	far = 0x0000000000000008, esr = 0x0000000096000004
+	#5 sysctl_add_oid+0x238
+	#6 drm_sysctl_init+0x22c
+	#7 drm_debugfs_init+0xb4
+	#8 drm_minor_register+0xa4
+	#9 drm_dev_register+0xdc
+
+hal/lima survives the same code only because its parent sits inside a
+heap-allocated platform_device, so the backwards walk lands in readable
+adjacent memory and the busid string is silently garbage. That is luck, not
+correctness.
+
+Guard the PCI-specific part with dev_is_pci() (linuxkpi already provides it) and
+fall back to the device's own name, which drm has already stored in dev->unique.
+
+--- a/drivers/gpu/drm/drm_sysctl_freebsd.c
++++ b/drivers/gpu/drm/drm_sysctl_freebsd.c
+@@ -171,15 +171,29 @@
+ {
+ 	struct sysctl_oid *oid;
+ 	int domain, bus, slot, func;
+-	struct pci_dev *pdev = to_pci_dev(dev->dev);
+ 
+-	domain = pci_domain_nr(pdev->bus);
+-	bus    = pdev->bus->number;
+-	slot   = PCI_SLOT(pdev->devfn);
+-	func   = PCI_FUNC(pdev->devfn);
++	/*
++	 * NOT every DRM device is PCI. A platform/SoC driver's parent is not
++	 * embedded in a struct pci_dev, so to_pci_dev() walks backwards off an
++	 * unrelated struct and ->bus is whatever happens to be there -- NULL on
++	 * a statically allocated parent, which panics here reading offset 8
++	 * during drm_dev_register(). Guard it and fall back to the device's own
++	 * name, which drm has already stored in dev->unique.
++	 */
++	if (dev_is_pci(dev->dev)) {
++		struct pci_dev *pdev = to_pci_dev(dev->dev);
+ 
+-	snprintf(dev->busid_str, sizeof(dev->busid_str),
+-	    "pci:%04x:%02x:%02x.%d", domain, bus, slot, func);
++		domain = pci_domain_nr(pdev->bus);
++		bus    = pdev->bus->number;
++		slot   = PCI_SLOT(pdev->devfn);
++		func   = PCI_FUNC(pdev->devfn);
++		snprintf(dev->busid_str, sizeof(dev->busid_str),
++		    "pci:%04x:%02x:%02x.%d", domain, bus, slot, func);
++	} else {
++		snprintf(dev->busid_str, sizeof(dev->busid_str),
++		    "platform:%s",
++		    dev->unique != NULL ? dev->unique : "unknown");
++	}
+ 	oid = SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(top), OID_AUTO, "busid",
+ 	    CTLFLAG_RD, dev->busid_str, 0, NULL);
+ 	if (oid == NULL)

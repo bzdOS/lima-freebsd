@@ -1,0 +1,9 @@
+*.o
+*.ko
+*.kld
+.depend*
+machine
+x86
+opt_*.h
+*_if.h
+export_syms
