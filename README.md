@@ -19,6 +19,15 @@ frame waits on a display flip-completion event.
 
 ---
 
+![Mali-400 rendering under FreeBSD/arm64](docs/mali400-freebsd-render.png)
+
+*Seven textured, depth-tested, alpha-blended cubes rendered by the Mali-400 on a
+Banana Pi M64 running FreeBSD 15.1 — 2420 draw calls per frame, presented
+zero-copy through DRM/KMS page flips paced by the real panel vblank. The frame
+was captured from outside the guest, by the hypervisor, which is why the
+instrumentation around it is visible: live timing/jitter, a PC-sample profiler
+histogram, and the guest's own register state.*
+
 ## Why this exists
 
 `lima` is upstream in Linux. Every render-only SoC GPU driver there is built on
@@ -220,30 +229,52 @@ symptom to root cause on real hardware.
 
 ## Where this came from
 
-Developed as part of **bzdOS / Chimp** — a from-scratch bare-metal **EL2
-hypervisor** for the Banana Pi M64 running FreeBSD 15.1 arm64 as its guest. The
-GPU work happened inside that guest, which is why some comments in this tree
-reference stage-2 faults, EL2, or a hypervisor-owned display: that context is
-kept rather than scrubbed, because it is the provenance of the reasoning and
-several bugs here are only explicable with it (a console write being a
-synchronous stage-2 fault, for instance, changes what "add a printf" costs).
+Developed inside **bzdk** — a from-scratch bare-metal **EL2 hypervisor** for the
+Banana Pi M64, running FreeBSD 15.1 arm64 as its guest. The GPU work happened
+inside that guest, which is why some comments in this tree reference stage-2
+faults, EL2, or a hypervisor-owned display. That context is kept rather than
+scrubbed, because several bugs here are only explicable with it — a console write
+being a synchronous stage-2 fault, for instance, changes what "add a printf"
+costs.
 
 Nothing in the code depends on that hypervisor. Every reference to it is a
 comment; the driver builds and runs on bare-metal FreeBSD/arm64 with the patches
 above. The parts that genuinely were hypervisor-specific — a scanout-import path
 and a hypervisor-framebuffer shim — are deliberately **not** in this repository.
+See `EXTRACTION.md` for the exact boundary.
 
-Sibling repositories and how they relate:
+### The three projects, and which is which
 
-- **bzdOS / Chimp** — the hypervisor this was built inside. It contributed the
-  debugging substrate that made this port possible at all: a debug plane on a
-  dedicated core that outlives the guest, breadcrumb windows readable
-  post-mortem, and a screenshot path that reads the framebuffer from EL2 while
-  the guest is wedged.
-- **hubd** — the shared coordination hub the work ran on: one task backlog and
-  journal spanning several machines, projects and agents, with cross-project
-  links. Both this port and the hypervisor were built and tracked through it,
-  and the incident write-ups referenced here came out of its journal.
+The names are easy to confuse, so plainly:
+
+- **bzdk** — the EL2 hypervisor above. **This** is what the Mali work ran under.
+  Not public.
+- **bzdOS** — the operating system: a privacy-first FreeBSD-based OS for ARM64,
+  with jailed apps, a Zenoh mesh and zero-copy Wayland streaming.
+  <https://github.com/bzdOS/bsdos>. A different project from bzdk; this driver is
+  what eventually gives it accelerated graphics on Allwinner hardware.
+- **hubd** — <https://github.com/bzdOS/hubd> — the project tracker the work was
+  run through: one backlog and journal in plain files, for teams of humans *and*
+  AI agents, with an MCP server and a CLI.
+
+What bzdk contributed to this port is worth naming, because it is why the bugs
+below were findable at all: a debug plane on a dedicated core that outlives the
+guest, breadcrumb windows readable post-mortem, and a screenshot path that reads
+the framebuffer from outside the guest — including while the guest is wedged.
+The image at the top of this file was taken that way.
+
+What hubd contributed is less obvious and mattered as much: **the build machine
+and the board were not the same machine.** The cross-compiler, the FreeBSD and
+drm-kmod source trees and the Mesa build lived on one host; the Banana Pi arrived
+at another, on a different network, with the serial console and the debug
+Ethernet physically attached there. So the work was split across machines, and
+several agents worked it in parallel — one bringing up clocks, another chasing
+DMA coherency, another writing the tests. hubd is what kept that coherent: a
+single task backlog and journal both machines wrote to, so "the board is busy",
+"this patch is already applied to that tree" and "this claim was measured, here
+is the number" were shared facts rather than things each agent rediscovered.
+Every incident write-up referenced in this repository came out of that journal.
+It costs nothing to run and needs no server.
 
 ---
 

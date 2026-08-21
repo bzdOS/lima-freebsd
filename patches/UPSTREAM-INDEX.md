@@ -68,3 +68,28 @@ assumed. Nine of the ten are load-bearing on live hardware right now: the board
 boots, the GPU renders (textures, 2420 draws, depth, blend) and presents at
 60 fps through DRM/KMS page flips paced by the real panel vblank. #5 is the
 exception and is carried for upstream only.
+
+## Where each of these actually goes
+
+The channels, so nobody has to work it out at sending time. Confirm the current
+maintainer before sending — these are the standard routes, not a promise about
+who answers.
+
+| Target | Route |
+|---|---|
+| `freebsd-src` (#1–#5) | FreeBSD Bugzilla — <https://bugs.freebsd.org>, product *Base System*. For a code review first, Phabricator — <https://reviews.freebsd.org>. The LinuxKPI/DRM ones (#1, #2) belong with the graphics people: the `freebsd-x11@FreeBSD.org` list. The Allwinner clock ones (#3–#5) are arm/SoC territory: `freebsd-arm@FreeBSD.org`. |
+| `drm-kmod` (#6–#9) | <https://github.com/freebsd/drm-kmod> — issues and pull requests. This is a separate repository from FreeBSD base and does not go through Bugzilla. |
+| `graphics/mesa-dri` (#10) | FreeBSD Bugzilla, product *Ports & Packages*, component *Individual Port(s)*. Read the port's own `MAINTAINER` line first and Cc them; graphics ports are usually maintained by the x11 team. |
+
+**Send #9 first and separately.** It is a local denial of service — an
+unprivileged `sysctl -a` panics the kernel — and it stands alone: it needs no
+lima, no Mali and no explanation of this project. Bundling it with nine porting
+fixes buries the one thing a maintainer must act on quickly.
+
+Two practical notes learned the hard way here. First, every patch in this
+directory carries its evidence — the failing register values, the measured
+before/after — because a claim about hardware behaviour without a number in it
+is unreviewable. Second, several of these were found only because a *second*
+consumer appeared (two DRM devices instead of one, a second test exercising a
+different path); if a maintainer says "works for me", that is often the reason,
+not disagreement.
