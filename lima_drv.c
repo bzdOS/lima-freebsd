@@ -11,7 +11,7 @@
  *                via LinuxKPI + drm-66-kmod; dispatch userspace IOCTL requests
  *                to gem/vm/sched subsystems.
  *   input:       FDT node matching "arm,mali-400" or "arm,mali-400-mp2";
- *                MMIO base 0x01C40000 size 0x10000 (A64/PinePhone Pro).
+ *                MMIO base 0x01C40000 size 0x10000 (Allwinner A64).
  *   output:      /dev/dri/renderD* character device; DRM render node
  *                accessible to weston/mesa userspace.
  *   sideEffects: Allocates DRM device, initialises per-file VM + ctx manager,
@@ -31,7 +31,7 @@
  *    is identical.
  * 4. module_platform_driver() is a LinuxKPI macro that generates the correct
  *    DRIVER_MODULE + simplebus attachment for FreeBSD newbus/FDT.
- * 5. of_device_id table gains "arm,mali-400-mp2" for PinePhone Pro A64.
+ * 5. of_device_id table gains "arm,mali-400-mp2" for the Allwinner A64.
  * 6. kvcalloc, kvfree, kmem_cache_zalloc, copy_from_user, u64_to_user_ptr,
  *    devm_kzalloc, pm_runtime_* — all LinuxKPI-provided; no changes needed.
  */
@@ -606,7 +606,7 @@ lima_pdev_remove(struct platform_device *pdev)
 /* ── FDT match table ────────────────────────────────────────────────*/
 
 static const struct of_device_id dt_match[] = {
-	/* PinePhone Pro / A64: Mali-400 MP2 (2 pixel processors) */
+	/* Allwinner A64: Mali-400 MP2 (2 pixel processors) */
 	{ .compatible = "arm,mali-400-mp2", .data = (void *)lima_gpu_mali400 },
 	/* Generic Mali-400 fallback */
 	{ .compatible = "arm,mali-400",     .data = (void *)lima_gpu_mali400 },

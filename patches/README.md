@@ -1,4 +1,4 @@
-# Patches against drm-kmod
+# Patches against other people's trees
 
 `hal/lima` builds against a drm-kmod source tree (`DRM_KMOD_SRC`, tag
 `drm_v6.6.25_13`, commit `11252e8b9074218848abe3195601acad655a2e26`). That tree
@@ -13,6 +13,7 @@ lives here instead.
 |---|---|---|
 | `drm-kmod/` | `$DRM_KMOD_SRC` (`/opt/bzdos/drm-kmod`) | `build-drm-kmod-arm64.sh`, automatically |
 | `freebsd-src/` | the FreeBSD source tree (`/opt/bzdos/freebsd-src-earlyboot-wt`) | by hand, before `buildkernel` |
+| `freebsd-ports/` | a FreeBSD **ports** checkout, at its root, with `-p0` | by hand; not part of any build here |
 
 They are separate because the build script applies **every** `*.patch` in its
 patch directory to drm-kmod. When both kinds shared one flat directory the build
@@ -25,7 +26,12 @@ Apply by hand with:
 ```sh
 cd "$DRM_KMOD_SRC" && patch -p1 < .../patches/drm-kmod/<name>.patch
 cd /opt/bzdos/freebsd-src-earlyboot-wt && patch -p1 < .../patches/freebsd-src/<name>.patch
+cd /usr/ports && patch -p0 < .../patches/freebsd-ports/<name>.patch   # note -p0
 ```
+
+The ports one takes `-p0`, not `-p1`: its paths are already relative to the
+ports root (`graphics/mesa-dri/Makefile`), the form a ports patch is normally
+submitted in.
 
 For drm-kmod, `build-drm-kmod-arm64.sh` does it itself, idempotently (dry-runs
 each patch first, skips ones already applied, hard-fails on a tree whose state it

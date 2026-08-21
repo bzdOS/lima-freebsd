@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: (GPL-2.0 WITH Linux-syscall-note) OR MIT */
 /* Copyright 2017-2018 Qiang Yu <yuq825@gmail.com> */
-/* FreeBSD 15.1 port — bsdOS project (Porcupine v0.3, PinePhone Pro Mali-400) */
+/* FreeBSD 15.1 port — bsdOS project (Banana Pi M64, Allwinner A64 Mali-400) */
 
 #ifndef __LIMA_DRM_H__
 #define __LIMA_DRM_H__

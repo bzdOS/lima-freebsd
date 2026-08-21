@@ -62,7 +62,7 @@
  *
  * Target: FreeBSD 15.1 aarch64, drm-66-kmod LinuxKPI layer.
  * Tested hardware (planned): Allwinner A64 Mali-400 MP2
- *   (PinePhone Pro — Porcupine v0.3, MMIO 0x01C40000, see ../mali_uio.h).
+ *   (Banana Pi M64 — Allwinner A64, MMIO 0x01C40000, see ../mali_uio.h).
  */
 
 #include <linux/slab.h>

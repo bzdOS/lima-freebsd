@@ -572,6 +572,31 @@ void lima_pp_bcast_fini(struct lima_ip *ip)
  *              task — the task whose frame to validate
  * output:      0 if valid; -EINVAL if frame is malformed.
  * sideEffects: none
+ *
+ * WHAT THIS DELIBERATELY DOES NOT CHECK, AND WHY THAT IS FINE.
+ *
+ * It does not look at plbu_array_address[], fragment_stack_address[] or wb[] at
+ * all -- upstream lima does not either, and this is upstream parity rather than
+ * a porting gap. It had been written down here as a security hole "contained
+ * only by stage-2 isolation and a single-user guest", which overstates it.
+ *
+ * Those fields are GPU VIRTUAL addresses. Every PP fetch goes through that PP's
+ * own MMU (ppmmu0..ppmmu5, see lima_device.c's IP descriptor table), programmed
+ * with the SUBMITTING CONTEXT's page tables -- so an address userspace invents
+ * either lands in that context's own mappings (its own memory, which it could
+ * write anyway) or misses and raises a GPU page fault, which
+ * lima_mmu_page_fault_resume() already handles. It cannot name host memory or
+ * another context's buffers. The per-PP MMU *is* the containment, and it is the
+ * same mechanism upstream Linux relies on for the same ioctl.
+ *
+ * Validating the VAs against the context's vm would therefore buy a slightly
+ * clearer error (-EINVAL instead of a GPU fault) at the cost of walking the
+ * page tables on every submit, on the hot path. Not done, on purpose.
+ *
+ * What IS checked is what the hardware cannot defend itself against: num_pp
+ * outside [1, num_processor] would program cores that do not exist, and the
+ * m450 frame's _pad is rejected non-zero so the union it precedes can never be
+ * read as the wrong variant. The m400 frame has no padding field to check.
  */
 static int lima_pp_task_validate(struct lima_sched_pipe *pipe,
 				 struct lima_sched_task *task)

@@ -46,7 +46,7 @@
 //     a real limitation for a 32-bit GPU in a large-memory machine, and one
 //     that has to be fixed in linuxkpi, not here.
 //  3. Imported PRIME objects can now be mmap()ed: drm-kmod gained
-//     dma_buf_mmap() (bzdOS 2026-08-11, patches/drm-kmod-dma-buf-mmap.patch),
+//     dma_buf_mmap() (bzdOS 2026-08-11, patches/drm-kmod/drm-kmod-dma-buf-mmap.patch),
 //     and drm_gem_shmem_mmap()'s import branch below calls it instead of
 //     returning -EOPNOTSUPP. NOT verified on hardware. That FreeBSD port of
 //     dma_buf_mmap() also knowingly omits one piece of upstream's reference
@@ -65,11 +65,34 @@
 //     drm_gem_shmem_purge() and drm/PURGE-NOTES.md). NOT verified on hardware.
 //     Nothing in this tree calls drm_gem_shmem_purge() at all today (Lima has
 //     no madvise ioctl and no shrinker, matching upstream Lima), so this gap
-//     was latent, not active.
+//     was latent, not active. STILL TRUE 2026-08-21: grep over hal/ finds no
+//     caller, and lima_drv.c exposes only GET_PARAM/GEM_CREATE/GEM_INFO/
+//     GEM_SUBMIT/GEM_WAIT. It becomes active the moment a shrinker is added,
+//     and it has still never executed -- do not treat it as tested code.
 //
-// NOTHING IN THIS FILE HAS RUN ON HARDWARE YET. It compiles for aarch64 under
-// -Werror with the full kmod flag set and links into lima.ko; that is all that
-// has been demonstrated.
+//  5. BOs can be backed by ONE PHYSICALLY CONTIGUOUS RUN, which upstream never
+//     asks for. Added because this port's whole point is handing a rendered
+//     buffer to the Allwinner DE2 display engine, and DE2 is a DMA reader with
+//     NO IOMMU in front of it: it fetches a single linear extent from a base
+//     address, so a scattered BO shows the first page's worth and then garbage.
+//     drm_gem_shmem_freebsd_try_contig() asks vm_page_alloc_contig() for the
+//     run (bounded by CONTIG_MAX_PAGES, and now also bounded BELOW 4 GiB
+//     because Mali-400's MMU entries are u32), falls back to the per-page path
+//     when the allocator cannot satisfy it, and is switchable at runtime via
+//     sysctl compat.linuxkpi.lima_shmem_contig=0. Counters
+//     lima_contig_alloc_pages / lima_teardown_pages / lima_teardown_objects
+//     make the split observable. This is the largest deliberate divergence in
+//     the file and an extraction reviewer will ask about it: on hardware with a
+//     real IOMMU, or a display engine that can scatter-gather, it is not needed.
+//
+// STATUS 2026-08-21: this file HAS run on hardware, extensively -- the
+// contiguous path above is what makes zero-copy presentation work at all
+// (limabench: textures + 2420 draws + depth + blend, limakms: 3599 page flips
+// at 60 fps, both on a Banana Pi M64). The header used to end "NOTHING IN THIS
+// FILE HAS RUN ON HARDWARE YET", which was true when it was written and stopped
+// being true long before anyone updated it. What has still NEVER executed is
+// drm_gem_shmem_purge() and its zap path (deviation 4) -- that part of the old
+// warning stands.
 
 #include <linux/dma-buf.h>
 #include <linux/dma-mapping.h>
@@ -217,9 +240,19 @@ drm_gem_shmem_freebsd_try_contig(vm_object_t vm_obj, unsigned long npages)
 	 * cut the residual growth of repeated runs from ~85 pages per run to
 	 * ~9, which is the measurable part of the difference.
 	 */
+	/*
+	 * High boundary 4 GiB - 1, not ~0: these pages are handed to Mali-400's
+	 * MMU, whose page-table entries are u32 (see lima_vm.c). A page above
+	 * 4 GiB cannot be expressed there, so allocating one only defers the
+	 * problem to a mapping that would either be refused or -- before
+	 * lima_vm.c grew its check -- silently truncated into an unrelated
+	 * page. Bounding the allocator means the failure happens here, where
+	 * the caller already has a fallback to the per-page path.
+	 */
 	m = vm_page_alloc_contig(vm_obj, 0,
 	    VM_ALLOC_NORMAL | VM_ALLOC_ZERO | VM_ALLOC_WIRED,
-	    npages, 0, ~(vm_paddr_t)0, PAGE_SIZE, 0, VM_MEMATTR_DEFAULT);
+	    npages, 0, (vm_paddr_t)UINT32_MAX, PAGE_SIZE, 0,
+	    VM_MEMATTR_DEFAULT);
 	if (m == NULL) {
 		VM_OBJECT_WUNLOCK(vm_obj);
 		return (NULL);
@@ -1073,7 +1106,7 @@ drm_gem_shmem_mmap(struct drm_gem_shmem_object *shmem,
 
 		/*
 		 * bzdOS 2026-08-11: drm-kmod now implements dma_buf_mmap()
-		 * (patches/drm-kmod-dma-buf-mmap.patch) -- this branch used
+		 * (patches/drm-kmod/drm-kmod-dma-buf-mmap.patch) -- this branch used
 		 * to be an unconditional -EOPNOTSUPP because that symbol did
 		 * not exist anywhere, not because mapping an imported buffer
 		 * is inherently unsafe. The call below reaches

@@ -153,7 +153,7 @@ kernel: it is the only way to run against a stock/unfixed one.
 `aw_clk_frac`/`aw_clk_m` implement `set_gate` but not `get_gate`. That reading is
 what nearly made this investigation conclude "the CCU has no gate for pll_gpu",
 which was wrong. Implemented for all seven affected Allwinner clknode classes
-(`patches/freebsd-allwinner-clk-get-gate.patch`), compiled into the deployed
+(`patches/freebsd-src/freebsd-allwinner-clk-get-gate.patch`), compiled into the deployed
 kernel, and measured:
 
 ```
@@ -233,7 +233,7 @@ the rebuilt `lima.ko` followed an earlier failed load in the same boot, so it
 panicked in `drm_dev_alloc()` **before `lima_clk_enable()` ever ran**. The real
 clock shims were never exercised.
 
-Fixed in `patches/drm-kmod-dev-alias-lifecycle.patch` (see `patches/README.md`).
+Fixed in `patches/drm-kmod/drm-kmod-dev-alias-lifecycle.patch` (see `patches/README.md`).
 Verified: three `kldload`/`kldunload` cycles of a failing lima, no panic,
 `/dev/dri` absent after unload.
 

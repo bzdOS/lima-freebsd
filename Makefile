@@ -10,7 +10,15 @@
 #   git clone --depth 1 -b drm_v6.6.25_13 \
 #       https://github.com/freebsd/drm-kmod.git /opt/bzdos/drm-kmod-src
 #   (cd /opt/bzdos/drm-kmod-src && \
-#    for p in ../bsdOS/hal/lima/patches/*.patch; do patch -p1 -i $p; done)
+#    for p in ../bsdOS/hal/lima/patches/drm-kmod/*.patch; do patch -p1 -i $p; done)
+#
+#    NOTE THE drm-kmod/ IN THAT GLOB. patches/ is split by TARGET TREE --
+#    patches/drm-kmod/ and patches/freebsd-src/ -- and globbing patches/*.patch
+#    would feed a freebsd-src patch to drm-kmod, which is exactly the mistake
+#    patches/README.md warns against. Until 2026-08-20 three patches also existed
+#    as byte-identical copies at the top level, so the wrong glob appeared to
+#    work while silently missing drm-kmod-nonpci-busid.patch; the duplicates are
+#    gone.
 #
 #   MAKEOBJDIRPREFIX=/opt/bzdos/fbsd-obj bmake \
 #       -m /opt/bzdos/freebsd-src-earlyboot-wt/share/mk \
@@ -32,9 +40,19 @@
 #   - the patches under patches/ are mandatory, not optional: dma_buf_mmap() is
 #     otherwise undeclared and drm_gem_shmem_helper.c will not compile.
 #
-# Then push the module md5-verified (a silently corrupt push has happened here)
-# and REBOOT THE GUEST rather than kldunload/kldload -- reloading leaves drm's
-# sysctls behind ("can't re-use a leaf") and breaks eglInitialize.
+# Then push the module md5-verified -- a silently corrupt push has happened here,
+# with the right size and the wrong content, so verify rather than trust.
+#
+# kldunload/kldload NOW WORKS (2026-08-21). This used to say "REBOOT THE GUEST
+# rather than kldunload/kldload -- reloading leaves drm's sysctls behind and
+# breaks eglInitialize", and that was true: drm_sysctl_init() put the SHARED
+# hw.dri node into the per-device sysctl context, so sysctl_ctx_free() failed
+# with EBUSY and removed nothing while cleanup freed the struct those nodes
+# pointed into. Mesa reads hw.dri.<N>.busid, hence the broken eglInitialize; an
+# unprivileged `sysctl -a` panicked the kernel outright. Fixed by
+# patches/drm-kmod/drm-kmod-dri-sysctl-lifecycle.patch -- verified over 5
+# load/GL/sysctl -a/unload cycles, 0 leaked nodes and GL working every time.
+# A reboot is no longer required; a reload is fine.
 #
 # ON A FREEBSD HOST (the old route, kept for reference):
 #   pkg install drm-66-kmod
@@ -42,7 +60,7 @@
 #   cd .../hal/lima && su -m root -c "make"
 #   kldload drm.ko && kldload ./lima.ko && dmesg | grep lima
 #
-# Target: FreeBSD 15.1 aarch64 (PinePhone Pro — Porcupine v0.3)
+# Target: FreeBSD 15.1 aarch64, Banana Pi M64 (Allwinner A64, Mali-400 MP2)
 #
 # This Makefile is arch-neutral: nothing here names amd64 or aarch64. It used to
 # hardcode KOBJ_DIR=/usr/obj/.../amd64.amd64/sys/BSDOS-SQUIRREL-amd64, which both

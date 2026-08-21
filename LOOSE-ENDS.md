@@ -120,6 +120,20 @@ any A64 board; without a patch file, the deliverable is not reproducible.
 
 ## 3. A Mali PTE is 32 bits wide and nothing bounds the pages that go into it
 
+> **RESOLVED 2026-08-20.** All four sites now refuse instead of truncating:
+> `lima_vm_map_page()` rejects a leaf page above 4 GiB (`-ERANGE`), the
+> page-directory path rejects page tables it cannot address (and frees them
+> again), `drm_gem_shmem_freebsd_try_contig()` bounds
+> `vm_page_alloc_contig()` at `UINT32_MAX` so the failure lands where the
+> caller already has a per-page fallback, and bzkms bounds its own
+> `contigmalloc()`, rejects an imported dma-buf crossing 4 GiB, and refuses
+> to write an out-of-range address to the 32-bit scanout doorbell.
+> Hardware-verified on the 1 GiB board: `limabench` passes, `limakms` runs
+> 3599 frames at 60.0 fps with 0 refused, `lima_contig_alloc_pages` keeps
+> climbing (so the bound did not silently push everything onto the slow
+> path), and none of the new refusals fires — which is the correct outcome
+> where no memory exists above 4 GiB.
+
 **Claim.** `lima_vm_map_page()` truncates a 64-bit physical address into a 32-bit
 PTE with no check, and the allocator that produces those pages is given the whole
 physical address space as its upper bound.
@@ -164,6 +178,18 @@ boards with more than 4 GiB. (c) is bzdOS-only.
 ---
 
 ## 4. `patches/` has three byte-identical duplicates, and the Makefile's own recipe reintroduces the bug they caused
+
+> **RESOLVED 2026-08-20.** The three flat duplicates are deleted, the
+> `Makefile` recipe now globs `patches/drm-kmod/*.patch` with a comment
+> saying why the subdirectory is load-bearing, and all seven references that
+> pointed at the flat paths were rewritten to the real ones. The related
+> two-trees hazard in the same item is closed too: `bzkms/Makefile` and
+> `bzfb/Makefile` defaulted to `/opt/bzdos/drm-kmod-src` while `drm.ko`
+> itself is built from `/opt/bzdos/drm-kmod` — an ABI mismatch that would
+> have presented as a guest panic inside DRM core, not as a build error.
+> Both now default to the same tree `drm.ko` comes from; both modules were
+> rebuilt against it and the full stack re-verified on hardware (60 s,
+> 3598 flips, 0 refused).
 
 **Claim.** The flat top-level copies of three patches are stale duplicates; the
 build recipe in `Makefile`'s header globs exactly that flat directory, which is
@@ -334,6 +360,29 @@ extraction should avoid.
 
 ## 8. The hand-built Mesa in `/usr/local` has no protection from `pkg`
 
+> **ADDRESSED AT THE ROOT 2026-08-20** (not closed — the patch is written,
+> not merged). The durable fix is not to protect a hand-built Mesa from
+> `pkg`; it is to make `pkg` able to build the right one.
+> `patches/freebsd-ports/mesa-dri-lima-gallium-option.patch` adds a `lima`
+> option to `graphics/mesa-dri` following the `panfrost` pattern — three
+> lines in the `Makefile` plus one `pkg-plist` entry, and deliberately no
+> `libclc`/LLVM dependency, because lima's gpir/ppir compilers need
+> neither. Verified to apply to a pristine ports checkout. Until it is
+> merged, everything below still describes the real exposure.
+>
+> **AND THE EXPOSURE NOW HAS A NAME (2026-08-21).** `pkg check -s` on the guest
+> reports exactly two checksum mismatches in the whole of `/usr/local`:
+> `libexpat.so` and `libexpat.so.1`. Both are symlinks pointing at
+> `libexpat.so.1.8.10`, hand-installed 2026-08-18 and owned by **no package**
+> (`pkg which` -> "not found in the database"), shadowing the packaged
+> `libexpat.so.1.12.2`. The hand-built Mesa resolves through that symlink
+> (`ldd libgbm.so` -> `/usr/local/lib/libexpat.so.1`). So the concrete thing
+> that breaks GL on this guest is not a vague "pkg upgrade of mesa-libs" -- it
+> is anything that reinstalls **expat**, which would rewrite that symlink to
+> 1.12.2 and relink Mesa onto a different library. Nothing else in `/usr/local`
+> diverges from the package database (the rest of pkg's complaints are missing
+> `__pycache__/*.pyc`, which is benign).
+
 **Claim.** Any `pkg install` that pulls in `mesa-libs` or `mesa-dri` replaces the
 guest's lima-capable Mesa with one that cannot drive this GPU. The threat is real;
 the reason usually given for it is wrong.
@@ -397,6 +446,36 @@ port of Mesa does not enable the lima gallium driver.
 
 ## 9. `glReadPixels` on an imported dma-buf FBO wedges the GPU past module unload
 
+> **RESOLVED 2026-08-21 — it was not the GPU.**
+> The half of this item that said "the wedged state survives `kldunload` of
+> lima and bzfb — only a guest reboot clears it" was a misattribution. What
+> survived the unload was a **dangling sysctl node**: `drm_sysctl_init()` put
+> the shared `hw.dri` node into the per-device context, `sysctl_ctx_free()`
+> then failed with EBUSY (that node's other children are drm.ko's module
+> parameters, owned elsewhere) and removed nothing, and
+> `drm_sysctl_cleanup()` freed the struct anyway. Mesa reads
+> `hw.dri.<N>.busid`, so after one reload every GL program failed with
+> "MESA-LOADER: failed to retrieve device information" — indistinguishable
+> from a wedged GPU, and equally only curable by a reboot.
+>
+> Two worse consequences of the same defect were found on the way: an
+> **unprivileged `sysctl -a` panicked the kernel** (`vm_fault failed`, with a
+> faulting address that is recycled ASCII text), reproduced twice; and the
+> per-device subtree leaked 6 nodes per load, cumulatively.
+>
+> Fixed in `patches/drm-kmod/drm-kmod-dri-sysctl-lifecycle.patch`. Verified
+> over 5 load/GL/`sysctl -a`/unload cycles: GL works every cycle, `sysctl -a`
+> returns 0 every cycle, 0 leaked nodes every cycle.
+>
+> **The remaining half is now settled too: it does not reproduce.**
+> `hal/bzfb/tests/limaread.c` (new) does exactly the thing warned against --
+> `SCANOUT|RENDERING` bo, exported, re-imported as an `EGLImage`, attached to an
+> FBO, cleared, then `glReadPixels`. It completes with `0 of 16384 pixels wrong`
+> on three consecutive runs, after which `limabench` still passes and
+> `kldunload lima` still takes 0.06 s. The warning in
+> `bzfb/tests/README-zerocopy.md` has been retracted there with the evidence.
+> **This item is closed.**
+
 **Claim.** A single ordinary GL call from unprivileged userspace puts the GPU in a
 state that survives `kldunload` of both lima and bzfb and needs a guest reboot.
 Nothing guards it.
@@ -429,6 +508,32 @@ is a shipping-blocker-class defect for a DRM driver, whoever's dma-buf it is.
 ---
 
 ## 10. The wedge-recovery branch that fix added has never executed
+
+> **CORRECTED 2026-08-21 — the opposite was true: it was the ONLY branch ever
+> taken.** The poll loop tested `pipe->current_task != NULL`, which is not a
+> test for "a task is in flight": upstream lima sets that pointer when a job
+> goes to the hardware and clears it only in the timeout/error path, so after
+> any successful render it stays set forever. Every `kldunload lima` therefore
+> waited the full 2000 ms per pipe, printed
+> `[drm ERROR] pp: pipe still busy 2000ms into teardown`, and force-reset both
+> pipes — while the hardware reported `int_state=0 status=0`, i.e. idle.
+> Measured: **4.09 s** per unload, two false DRM_ERRORs, a needless GPU reset
+> every time.
+>
+> Fixed by testing the task's **fence** instead (`pipe_task_in_flight()`), which
+> is signalled exactly when the hardware is done and stays unsignalled for a
+> genuine wedge. Unload is now **0.06 s** with no error line and no reset, and
+> the clean-teardown path drops the VM reference the always-taken branch used
+> to drop.
+>
+> The branch is now genuinely never taken on healthy hardware, so this item's
+> original request stands satisfied a different way: a new
+> `sysctl compat.linuxkpi.lima_fake_wedge=1` forces it deterministically. Run
+> live, it does what it claims: bounded at 2000 ms per pipe, prints the
+> DRM_ERROR, calls `task_error()` on both pipes, the unload **completes**, no
+> UMA "not empty" warning, no panic from force-signalling with `-ENODEV`, and
+> a subsequent `kldload` attaches and renders. Every "Unproven" claim above is
+> now measured.
 
 **Claim.** Commit `261ef05` bounded pipe teardown so a wedged GPU cannot hang
 `kldunload` forever. The reordering half runs on every unload; the timeout half
@@ -467,6 +572,32 @@ status in a comment until it has.
 
 ## 11. Eight upstream fixes are written and none is submitted; three have no write-up
 
+> **UPDATE 2026-08-21 — TEN, and the bookkeeping this item was about is now
+> obsolete.** `patches/UPSTREAM-INDEX.md` is the submission index: all ten
+> fixes across three foreign trees, each with its target tree, patch file,
+> where its write-up lives, apply order, and whether this board depends on it.
+>
+> The two that had "none — only the commit message" now have both: they were
+> extracted from commits `134a4b503` / `39090bd6f` into a proper two-patch
+> series (`freebsd-linuxkpi-01-dma-map-sg-multipage.patch`, then
+> `-02-dma-alloc-coherent-memattr.patch` — verified to reproduce the committed
+> tree byte-for-byte when applied in that order) and written up in
+> `UPSTREAM-freebsd-linuxkpi-dma.md`.
+>
+> Four fixes carry their reasoning as a header comment inside the patch file
+> rather than a separate `UPSTREAM-*.md`. That is deliberate, not a gap: a
+> patch that travels with its own justification is harder to mis-send. Only #6
+> (`dma-buf-mmap`) is genuinely thin, with prose in `README.md` alone.
+>
+> **The index also names which one to send first**, which the old count did
+> not: the `hw.dri` sysctl lifecycle fix (#9) is a local denial of service any
+> user with a shell can trigger on any FreeBSD machine running a DRM driver
+> without debugfs — no lima, no Mali and no bzdOS needed to reproduce.
+> Everything else is a porting fix.
+>
+> Submission still needs the author's own accounts, so the count of *submitted*
+> stays zero.
+
 **Claim.** The port's third-party-defect haul is eight distinct fixes across two
 foreign trees. Five are documented well enough to send; three are not documented
 at all. None has been submitted, and submission needs the author's own accounts.
@@ -504,6 +635,18 @@ name the upstream revisions that contain them.
 ---
 
 ## 12. `hvfb/` is dead code, and `SCANOUT-IMPORT.md` documents a route that was measured not to work
+
+> **RESOLVED 2026-08-21.** The boundary is now visible in the tree rather than
+> only in prose: both artefacts moved to `bzdos/` (with a `bzdos/README.md`
+> saying why they are kept and that nothing depends on them), and
+> `bzdos/SCANOUT-IMPORT.md` carries a status note at its head stating that its
+> recommended route was measured not to work and that its geometry arithmetic is
+> stale. New `EXTRACTION.md` is the manifest this item asked for: a TRAVELS list,
+> a DOES NOT TRAVEL list, the judgement call about `lima_ccu_debug.c` spelled
+> out, and the instruction to REWORD rather than delete the 19 `bzdOS` comments
+> in travelling sources — each records a real finding. Re-verified by grep, not
+> assumed: nothing outside `bzdos/` references `hvfb`, and lima still builds
+> after the move.
 
 **Claim.** Two bzdOS-specific artefacts should be marked as non-travelling; one of
 them is also dead.
@@ -548,41 +691,52 @@ boundary is visible in the tree rather than only in prose.
 
 ## 13. bzkms's vblank is a callout, and its rate cannot express the mode
 
-**Claim.** Flip-completion pacing works but is not locked to the panel, and the
-period is quantised to whole ticks against a hardcoded 60 Hz.
-
-**Evidence.** `bzkms.c:28-34` states the gap in the file's own words: "There is no
-vblank interrupt in the guest -- the real one belongs to EL2 -- so the vblank
-source here is a periodic callout at the mode's refresh rate. ... the phase is not
-locked to the real scanout". Implementation: `bzkms.c:102`
-`#define BZKMS_DEFAULT_REFRESH 60`, `bzkms.c:208` and `:221`
-`callout_reset(&bz->vbl_callout, hz / BZKMS_DEFAULT_REFRESH, ...)`, and
-`bzkms.c:382` builds the mode with the same constant. With hz=1000 that is 16
-ticks — 62.5 Hz nominal, not 60 — and the nearest expressible neighbours are 62.5
-(16 ticks) and 58.8 (17). The mode DRM reports is `1120x276@59` and measured
-throughput is 59.7 fps (commit `62fd5fd`: 1194 frames in 20.0 s), confirmed
-independently from EL2 (`guestwin_count` rose 187 in 3 s, ~62/s).
-
-**Unproven.** Where 59.7 comes from, given a 62.5 Hz callout — most likely the
-client's own `drmModePageFlip`/event round trip rather than the callout, but that
-was not separated. Also unproven: that the phase error is visible. Commit
-`afe2591` established that `DE_GLB_DBUFF` latches the layer address at the next
-vertical blank, so the flip itself is atomic against scanout — which removes
-tearing-from-the-flip and leaves only "a client pacing off these events drifts
-against the panel".
-
-**Next step.** EL2 already owns the real vblank; publish a monotonic vblank
-counter and timestamp in the scanout register file (`bzkms.c:99`
-`BZKMS_SCANOUT_MMIO_BASE 0x0A002000`, the doorbell is at `+0x30`, so there is
-room) and have `bzkms_enable_vblank()` read it instead of running a callout. Until
-then, at minimum derive the callout period from the mode's real timings rather
-than the hardcoded 60, and say in a comment that the period is tick-quantised.
-
-**Extraction.** No — bzkms is bzdOS-specific by construction.
-
----
+> **NOT PART OF THIS EXTRACTION.** `bzkms` is the bzdOS-side DRM/KMS device (see
+> `EXTRACTION.md`) and does not ship here. Resolved on that side 2026-08-21 —
+> the vblank is now observed from the real panel rather than generated by a
+> local timer — but nothing in this repository depends on it.
 
 ## 14. Smaller, cheap, low-risk
+
+> **WORKED THROUGH 2026-08-21.** Done: `bzkms/.gitignore` written from
+> `bzfb/`'s template and the three generated headers added to
+> `lima/.gitignore` (`bus_if.h` needed an exact-line check — it is a substring
+> of the `ofw_bus_if.h` already there, which is how it had been missed);
+> `mesa/FEASIBILITY.md` is tracked; `contigfree(9)` replaced by `free()` with
+> the deprecation quoted; **"PinePhone Pro" corrected in all 11 places** (it is
+> RK3399/Mali-T860 — a different GPU family — while this is a Banana Pi M64,
+> A64/Mali-400 MP2; `lima_pmu.c`'s existing explanation of the error is kept
+> deliberately); the `Makefile`'s "REBOOT THE GUEST rather than
+> kldunload/kldload" note replaced, because item 9's fix made reloading work;
+> the contiguous-BO path written up as **deviation 5** in
+> `drm/drm_gem_shmem_helper.c` with the DE2/no-IOMMU reason and the
+> extraction-reviewer question named; that file's "NOTHING IN THIS FILE HAS RUN
+> ON HARDWARE YET" banner corrected (it has, extensively — what has still never
+> run is `drm_gem_shmem_purge()`, and that half of the warning is kept);
+> `tests/README.md` extended from 2 of 8 files to all 8, including the two
+> host-side unit tests and the `gmake test-layout` / `test-shmem` targets that
+> reach them.
+>
+> **One item was refuted rather than fixed.** "`lima_pp_task_validate()`
+> validates almost nothing ... contained today only by stage-2 isolation and a
+> single-user guest" overstates the risk. Those fields are GPU **virtual**
+> addresses, and every PP fetch goes through that PP's own MMU
+> (`ppmmu0..ppmmu5`) programmed with the submitting context's page tables — so
+> a bogus value either hits the context's own mappings or raises a GPU page
+> fault that `lima_mmu_page_fault_resume()` already handles. It cannot name host
+> memory or another context's buffers. The per-PP MMU *is* the containment, and
+> it is the same mechanism upstream relies on. Written up in the function's own
+> contract, including why walking the page tables per submit is deliberately not
+> done.
+>
+> **A new bug fell out of the work**, worth recording because it was
+> self-inflicted: the non-PCI busid fallback had been made a fixed
+> `pci:0000:00:00.0`, which is fine with one DRM device and breaks with two —
+> lima and bzkms advertised the same busid and Mesa's loader could not tell them
+> apart ("failed to retrieve device information"). Only visible once a second
+> test (`limaread`) exercised gbm on a card node with both loaded. The fallback
+> now varies by sysctl node index; measured `pci:0000:00:00.0` and
+> `pci:0000:00:01.0`, with all three GL tests passing with both devices present.
 
 - **`bzkms/` has no `.gitignore`.** Ten generated files (`bzkms.o`, `.ko`, `.kld`,
   `export_syms`, `machine`, and five generated `*_if.h`) show as untracked noise

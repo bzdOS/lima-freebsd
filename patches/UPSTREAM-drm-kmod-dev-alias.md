@@ -283,7 +283,7 @@ smaller pre-existing bug (stale dev nodes surviving unload) fixed as a side
 effect.
 
 This exact change (implemented in
-`hal/lima/patches/drm-kmod-dev-alias-lifecycle.patch` in this repository) was
+`hal/lima/patches/drm-kmod/drm-kmod-dev-alias-lifecycle.patch` in this repository) was
 verified on the hardware above: three consecutive `kldload`/`kldunload` cycles
 of a driver whose probe fails every time, no `make_dev_alias` panic where the
 second cycle previously panicked every time, and `/dev/dri/` confirmed absent
@@ -299,7 +299,7 @@ this project's own README) and against this project's FreeBSD 15.1 source
 tree:
 - Every file:line citation and quoted code block above.
 - That the project's existing patch
-  (`hal/lima/patches/drm-kmod-dev-alias-lifecycle.patch`) applies cleanly
+  (`hal/lima/patches/drm-kmod/drm-kmod-dev-alias-lifecycle.patch`) applies cleanly
   (`patch -p1 --dry-run`) against these exact pristine pre-patch files —
   i.e. the patch's own line references are correct for this commit.
 - `__FreeBSD_version` 1501000 in this project's FreeBSD tree

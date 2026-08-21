@@ -25,12 +25,34 @@ heap-allocated platform_device, so the backwards walk lands in readable
 adjacent memory and the busid string is silently garbage. That is luck, not
 correctness.
 
-Guard the PCI-specific part with dev_is_pci() (linuxkpi already provides it) and
-fall back to the device's own name, which drm has already stored in dev->unique.
+Guard the PCI-specific part with dev_is_pci() (linuxkpi already provides it).
 
+The busid STRING deliberately stays PCI-shaped for non-PCI devices, and that is
+not laziness -- it was measured. Emitting the honest "platform:<dev->unique>"
+breaks Mesa outright: its loader identifies the device from the shape of this
+busid (drmGetBusid -> drmParseSubsystemType), has no platform path on FreeBSD,
+and answers "MESA-LOADER: failed to retrieve device information" followed by
+eglInitialize -> 0x3001. On a Mali-400 with Mesa 26.2 the honest string means no
+GL at all. So what this patch fixes is the DEREFERENCE, which is the part that
+panics; a fixed 0000:00:00.0 is also strictly better than what non-PCI devices
+got before, which was whatever adjacent heap memory happened to contain.
+
+Making the honest string usable is a userspace change -- teaching libdrm's
+drmParseSubsystemType and Mesa's loader about platform devices on FreeBSD -- and
+belongs in a separate patch against those, not here.
+
+# UPDATE 2026-08-21: the fallback device number now VARIES per DRM device.
+# It used to be a fixed "pci:0000:00:00.0" for every one, which is fine with a
+# single DRM device and breaks with two: a render-capable driver (lima) and a
+# display-only one (bzkms) then advertise the SAME busid, Mesa's loader cannot
+# tell them apart, and every GL program fails with "MESA-LOADER: failed to
+# retrieve device information" / eglInitialize 0x3001. Observed exactly that
+# with both loaded. The sysctl node index -- already this device's unique slot
+# under hw.dri -- is used as the PCI device field, which keeps the PCI-shaped
+# string Mesa insists on while making it unique.
 --- a/drivers/gpu/drm/drm_sysctl_freebsd.c
 +++ b/drivers/gpu/drm/drm_sysctl_freebsd.c
-@@ -171,15 +171,29 @@
+@@ -226,15 +226,62 @@
  {
  	struct sysctl_oid *oid;
  	int domain, bus, slot, func;
@@ -60,9 +82,42 @@ fall back to the device's own name, which drm has already stored in dev->unique.
 +		snprintf(dev->busid_str, sizeof(dev->busid_str),
 +		    "pci:%04x:%02x:%02x.%d", domain, bus, slot, func);
 +	} else {
++		/*
++		 * DELIBERATE COMPATIBILITY LIE, and it must stay one until
++		 * userspace can cope. The honest string here is
++		 * "platform:<dev->unique>", and emitting it BREAKS Mesa: its
++		 * loader identifies the device from the shape of this busid
++		 * (drmGetBusid -> drmParseSubsystemType), has no platform path
++		 * on FreeBSD, and answers "MESA-LOADER: failed to retrieve
++		 * device information" followed by eglInitialize -> 0x3001.
++		 * Measured on a Mali-400 with Mesa 26.2: honest busid = no GL
++		 * at all.
++		 *
++		 * So the FORMAT stays PCI-shaped for every device. What this
++		 * patch actually fixes is the DEREFERENCE above: reading
++		 * pdev->bus->number through a struct that is not a pci_dev
++		 * panics (far = 0x8) on any platform DRM driver. A fixed
++		 * 0000:00:00.0 is also strictly better than what non-PCI
++		 * devices got before, which was whatever adjacent heap memory
++		 * happened to contain.
++		 *
++		 * Doing this properly means teaching libdrm's
++		 * drmParseSubsystemType (and Mesa's loader) about platform
++		 * devices on FreeBSD -- a userspace change, not a kernel one.
++		 *
++		 * THE DEVICE NUMBER MUST VARY (2026-08-21). This was a fixed
++		 * "pci:0000:00:00.0" for every device, which is fine with one
++		 * DRM device and breaks with two: a render-capable driver and a
++		 * display-only one then advertise the SAME busid, Mesa's loader
++		 * cannot tell them apart, and every GL program fails with
++		 * "MESA-LOADER: failed to retrieve device information".
++		 * Observed exactly that with lima + bzkms both loaded. Using
++		 * the sysctl node index (which is already this device's unique
++		 * slot under hw.dri) as the PCI device field keeps the shape
++		 * Mesa insists on while making the string unique per device.
++		 */
 +		snprintf(dev->busid_str, sizeof(dev->busid_str),
-+		    "platform:%s",
-+		    dev->unique != NULL ? dev->unique : "unknown");
++		    "pci:0000:00:%02x.0", dev->sysctl_node_idx & 0x1f);
 +	}
  	oid = SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(top), OID_AUTO, "busid",
  	    CTLFLAG_RD, dev->busid_str, 0, NULL);
