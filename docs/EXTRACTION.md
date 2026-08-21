@@ -7,7 +7,10 @@ This file is the boundary, so an extraction does not have to be an archaeology
 exercise. It is deliberately a manifest, not a script — the split is a judgement
 about *meaning*, and a reader should be able to disagree with it.
 
-The public extraction lives at **https://github.com/bzdOS/lima-freebsd**.
+The public extraction lives at **https://github.com/bzdOS/lima-freebsd**, and
+the hypervisor it was extracted from is **https://github.com/bzdOS/bzdk** — so
+the "does not travel" column below is checkable rather than a claim: everything
+named there is in that repository instead.
 
 ## TRAVELS — the port proper
 
