@@ -1,0 +1,206 @@
+# hw.dri sysctl lifecycle: stop leaving dangling OIDs behind on driver unload
+#
+# TARGET TREE: drm-kmod ($DRM_KMOD_SRC). Applied automatically by
+#   infra/scripts/build-drm-kmod-arm64.sh. See ../README.md.
+#
+# THREE SYMPTOMS, ONE CAUSE. Found on a Banana Pi M64 running FreeBSD 15.1
+# aarch64 with the out-of-tree lima driver, 2026-08-21:
+#
+#   1. After ONE `kldunload lima; kldload lima`, every GL program fails with
+#      "MESA-LOADER: failed to retrieve device information" and eglInitialize
+#      0x3001, until the machine is rebooted. This had been recorded locally as
+#      "the GPU stays wedged across a module unload"; it was never the GPU --
+#      Mesa reads hw.dri.<N>.busid, and that node had been left pointing at
+#      freed memory.
+#
+#   2. A plain, UNPRIVILEGED `sysctl -a` panics the kernel:
+#        panic: vm_fault failed: 0xffff0000005374b8 error 1
+#      with far=0x667830223d6669e8 -- a faulting "address" that is recycled
+#      ASCII text (`if="0xf`), which is exactly what walking a freed sysctl
+#      node looks like. Reproduced twice.
+#
+#   3. hw.dri.<N> and all its children survive `kldunload` entirely
+#      (measured: 6 nodes before, 6 after).
+#
+# ROOT CAUSE. drm_sysctl_init() put the SHARED hw.dri node into the
+# per-device sysctl context. hw.dri is not per-device: drm.ko's own module
+# parameters (hw.dri.debug, hw.dri.poll, hw.dri.vblank_offdelay, ...) hang off
+# it and are owned elsewhere. sysctl_ctx_free() is all-or-nothing, so removing
+# hw.dri failed with EBUSY and the call removed NOTHING -- not even this
+# device's own hw.dri.<N> subtree -- while drm_sysctl_cleanup() went on to
+# free() the drm_sysctl_info those surviving OIDs point into.
+#
+# THE FIX, three parts:
+#   * hw.dri is found-or-created with a NULL context, so it outlives any single
+#     device, like the module parameters under it. The per-device hw.dri.<N>
+#     subtree stays in the context and now frees cleanly.
+#   * The three shared leaves added under hw.dri (debug, vblank_offdelay,
+#     timestamp_precision) likewise get a NULL context: tearing down one device
+#     must not remove nodes another device still expects.
+#   * drm_sysctl_cleanup() no longer free()s the struct when sysctl_ctx_free()
+#     fails. A bounded memory leak is strictly better than a use-after-free any
+#     unprivileged process can trigger, and it now says so in the log.
+#   * drm_debugfs_cleanup() frees the sysctl tree BEFORE its debugfs_root early
+#     return, mirroring drm_debugfs_init(), which creates that tree
+#     unconditionally -- otherwise nothing frees it when debugfs is absent.
+#
+# VERIFIED on hardware, 5 consecutive load/GL/sysctl -a/unload cycles:
+# GL works every cycle (was: broken after the first reload until reboot),
+# `sysctl -a` returns 0 every cycle (was: kernel panic), and 0 leaked nodes
+# every cycle (was: 6 per load, cumulative).
+#
+diff -u -r a/drivers/gpu/drm/drm_debugfs.c b/drivers/gpu/drm/drm_debugfs.c
+--- a/drivers/gpu/drm/drm_debugfs.c	2026-08-21 01:13:36.655600891 +0300
++++ b/drivers/gpu/drm/drm_debugfs.c	2026-08-21 01:13:36.658430495 +0300
+@@ -367,13 +367,41 @@
+ 
+ void drm_debugfs_cleanup(struct drm_minor *minor)
+ {
+-	if (!minor->debugfs_root)
+-		return;
+-
+-	/* NOTE Linux<->FreeBSD: Mesa needs the hw.dri sysctl tree. */
++	/* NOTE Linux<->FreeBSD: Mesa needs the hw.dri sysctl tree.
++	 *
++	 * This MUST run before the debugfs_root check below, and it must mirror
++	 * drm_debugfs_init()'s condition exactly. init creates the sysctl tree
++	 * UNCONDITIONALLY -- it does not test whether debugfs_create_dir()
++	 * actually returned a dentry -- so when debugfs is unavailable
++	 * (lindebugfs not loaded, not mounted, or the create simply failed) the
++	 * old code created hw.dri.* and then returned from cleanup without ever
++	 * freeing it.
++	 *
++	 * The consequences are not cosmetic. The leaked OIDs keep pointing at
++	 * the drm_sysctl_info and drm_device that cleanup went on to free, so:
++	 *   - reloading the driver logs "sysctl_add_oid: can't re-use a leaf
++	 *     (hw.dri.debug)!" and the tree ends up half-owned by a dead device;
++	 *   - ANY full walk of the sysctl tree dereferences the stale node. A
++	 *     plain `sysctl -a` -- unprivileged -- panics the kernel:
++	 *     "panic: vm_fault failed ... error 1" with a faulting address that
++	 *     is recycled ASCII text (observed far=0x667830223d6669e8, i.e.
++	 *     `if="0xf`), which is what a use-after-free of this shape looks
++	 *     like;
++	 *   - Mesa queries the same tree, so after one driver reload every GL
++	 *     program fails with "MESA-LOADER: failed to retrieve device
++	 *     information" and eglInitialize 0x3001 until the machine reboots.
++	 *
++	 * That last symptom is worth naming, because it was previously recorded
++	 * as a GPU that stayed wedged across a module unload and needed a
++	 * reboot. It was not the GPU.
++	 */
+ #ifdef __FreeBSD__
+-	drm_sysctl_cleanup(minor->dev);
++	if (minor->type != DRM_MINOR_RENDER)
++		drm_sysctl_cleanup(minor->dev);
+ #endif
++
++	if (!minor->debugfs_root)
++		return;
+ 	drm_debugfs_remove_all_files(minor);
+ 
+ 	debugfs_remove_recursive(minor->debugfs_root);
+diff -u -r a/drivers/gpu/drm/drm_sysctl_freebsd.c b/drivers/gpu/drm/drm_sysctl_freebsd.c
+--- a/drivers/gpu/drm/drm_sysctl_freebsd.c	2026-08-21 01:13:36.699601145 +0300
++++ b/drivers/gpu/drm/drm_sysctl_freebsd.c	2026-08-21 01:13:36.711601215 +0300
+@@ -79,9 +79,46 @@
+ 	info = malloc(sizeof *info, DRM_MEM_DRIVER, M_WAITOK | M_ZERO);
+ 	dev->sysctl = info;
+ 
+-	/* Add the sysctl node for DRI if it doesn't already exist */
+-	drioid = SYSCTL_ADD_NODE(&info->ctx, SYSCTL_CHILDREN(&sysctl___hw), OID_AUTO,
+-	    "dri", CTLFLAG_RW, NULL, "DRI Graphics");
++	/*
++	 * Find or create hw.dri -- and deliberately do NOT put it in this
++	 * device's sysctl context (note the NULL first argument below).
++	 *
++	 * hw.dri is SHARED. drm.ko's own module parameters live directly under
++	 * it (hw.dri.debug, hw.dri.poll, hw.dri.vblank_offdelay, ...) and are
++	 * owned by the module-parameter machinery, not by any drm_device. A
++	 * per-device context that CLAIMS hw.dri can therefore never be freed:
++	 * sysctl_ctx_free() is all-or-nothing, removing hw.dri fails because it
++	 * still has children owned elsewhere, and the call returns EBUSY having
++	 * removed NOTHING -- not even this device's own hw.dri.<N> subtree.
++	 *
++	 * drm_sysctl_cleanup() then freed the drm_sysctl_info anyway, so every
++	 * unload left the whole hw.dri.<N> subtree registered with its OIDs
++	 * pointing into freed memory. Observed on FreeBSD 15.1/arm64
++	 * (2026-08-21): the nodes survive `kldunload`, and any full walk of the
++	 * tree -- an unprivileged `sysctl -a`, or Mesa's own device query --
++	 * dereferences them and panics the kernel ("vm_fault failed", with a
++	 * faulting address that is recycled ASCII text). Mesa's query failing
++	 * is also why GL stopped working after one driver reload and looked
++	 * like a GPU that stayed wedged across module unload.
++	 *
++	 * Unmanaged is the right lifetime for this node: it must outlive any
++	 * single device, exactly like the module parameters hanging off it.
++	 */
++	drioid = NULL;
++#ifdef SYSCTL_FOREACH
++	SYSCTL_FOREACH(oid, SYSCTL_CHILDREN(&sysctl___hw))
++#else
++	SLIST_FOREACH(oid, SYSCTL_CHILDREN(&sysctl___hw), oid_link)
++#endif
++	{
++		if (strcmp(oid->oid_name, "dri") == 0) {
++			drioid = oid;
++			break;
++		}
++	}
++	if (drioid == NULL)
++		drioid = SYSCTL_ADD_NODE(NULL, SYSCTL_CHILDREN(&sysctl___hw),
++		    OID_AUTO, "dri", CTLFLAG_RW, NULL, "DRI Graphics");
+ 	if (!drioid) {
+ 		free(dev->sysctl, DRM_MEM_DRIVER);
+ 		dev->sysctl = NULL;
+@@ -131,7 +168,12 @@
+ 			return (-ENOMEM);
+ 		}
+ 	}
+-	SYSCTL_ADD_LONG(&info->ctx, SYSCTL_CHILDREN(drioid), OID_AUTO, "debug",
++	/* Shared leaves, same reasoning as hw.dri itself: NULL context, so
++	 * tearing down one device cannot remove nodes another device (or
++	 * drm.ko's module parameters) still expects. On builds where drm.ko
++	 * already exports these as module parameters the add simply fails with
++	 * "can't re-use a leaf", which is harmless and pre-existing. */
++	SYSCTL_ADD_LONG(NULL, SYSCTL_CHILDREN(drioid), OID_AUTO, "debug",
+ 	    CTLFLAG_RW, &__drm_debug, "Enable debugging output");
+ #ifdef notyet
+ 	if (dev->driver->sysctl_init != NULL)
+@@ -140,11 +182,11 @@
+ 
+ 	drm_add_busid_modesetting(dev, &info->ctx, top);
+ 
+-	SYSCTL_ADD_INT(&info->ctx, SYSCTL_CHILDREN(drioid), OID_AUTO,
++	SYSCTL_ADD_INT(NULL, SYSCTL_CHILDREN(drioid), OID_AUTO,
+ 	    "vblank_offdelay", CTLFLAG_RW, &drm_vblank_offdelay,
+ 	    sizeof(drm_vblank_offdelay),
+ 	    "");
+-	SYSCTL_ADD_INT(&info->ctx, SYSCTL_CHILDREN(drioid), OID_AUTO,
++	SYSCTL_ADD_INT(NULL, SYSCTL_CHILDREN(drioid), OID_AUTO,
+ 	    "timestamp_precision", CTLFLAG_RW, &drm_timestamp_precision,
+ 	    sizeof(drm_timestamp_precision),
+ 	    "");
+@@ -160,9 +202,22 @@
+ 		return (0);
+ 
+ 	error = sysctl_ctx_free(&dev->sysctl->ctx);
++	if (error != 0) {
++		/*
++		 * The OIDs are still registered and their oid_arg1 points into
++		 * this allocation, so freeing it now would leave the sysctl
++		 * tree full of dangling nodes -- and the next `sysctl -a`
++		 * panics the machine. Leak the struct instead and say so. A
++		 * bounded leak is strictly better than a use-after-free that
++		 * any unprivileged process can trigger.
++		 */
++		DRM_ERROR("sysctl_ctx_free failed (%d); leaking the sysctl "
++			  "context rather than leaving dangling OIDs\n", error);
++		return (-error);
++	}
+ 	free(dev->sysctl, DRM_MEM_DRIVER);
+ 	dev->sysctl = NULL;
+-	return (-error);
++	return (0);
+ }
+ 
+ static int

@@ -55,6 +55,7 @@
 #include "lima_gem.h"
 #include "lima_trace.h"
 #include "lima_freebsd_compat.h"
+#include <sys/sysctl.h>
 
 /* --------------------------------------------------------------------------
  * Lima fence — thin wrapper around dma_fence allocated from a slab cache.
@@ -946,6 +947,56 @@ int lima_sched_pipe_init(struct lima_sched_pipe *pipe, const char *name)
  *      ceiling on that wait and forces the pipe idle itself on timeout
  *      instead of relying on that recovery having already run.
  */
+/*
+ * pipe_task_in_flight — is there really a task the hardware still owes us?
+ *
+ * NOT the same question as `pipe->current_task != NULL`, which is what the
+ * first version of the teardown below tested. Upstream lima sets current_task
+ * when a job is handed to the hardware (lima_sched_run_task) and clears it only
+ * in the timeout/error path -- lima_sched_pipe_task_done() signals the fence on
+ * normal completion and deliberately leaves current_task pointing at the last
+ * task submitted. So after any successful render, current_task stays non-NULL
+ * forever.
+ *
+ * Testing it directly therefore made the "GPU is wedged" branch fire on EVERY
+ * unload. Measured on hardware 2026-08-21: `kldunload lima` after one limabench
+ * run took 4.09 s (2000 ms per pipe), printed
+ *   [drm ERROR] pp: pipe still busy 2000ms into teardown
+ * for both pipes, and force-reset each one -- while the hardware itself
+ * reported `int_state=0 status=0`, i.e. perfectly idle with nothing in flight.
+ * A false alarm that also power-cycled a healthy GPU on every unload, and it
+ * masked the branch's real purpose: LOOSE-ENDS.md recorded the timeout path as
+ * "has never executed" when in fact it was the only path ever taken.
+ *
+ * The fence is the honest test: it is signalled exactly when the hardware is
+ * done with the task (or when recovery completes it), and it stays unsignalled
+ * for a genuine wedge -- which is the case this teardown exists to survive.
+ */
+/*
+ * Deterministic exerciser for the wedge branch below. With the predicate fixed,
+ * that branch is (correctly) never taken on healthy hardware -- so the only way
+ * to know it works is to force it, and the only honest alternative was wedging
+ * a real GPU with the glReadPixels-on-imported-dma-buf case and needing a guest
+ * reboot afterwards. Set it, run one job, unload: the teardown then behaves
+ * exactly as it would against a Mali that never posts another interrupt.
+ */
+static int fake_wedge;
+SYSCTL_INT(_compat_linuxkpi, OID_AUTO, lima_fake_wedge, CTLFLAG_RWTUN,
+    &fake_wedge, 0,
+    "pretend the pipe's task never completes, to exercise the bounded "
+    "teardown/recovery path in lima_sched_pipe_fini()");
+
+static bool pipe_task_in_flight(struct lima_sched_pipe *pipe)
+{
+	struct lima_sched_task *task = pipe->current_task;
+
+	if (task == NULL || task->fence == NULL)
+		return false;
+	if (fake_wedge)
+		return true;
+	return !dma_fence_is_signaled(task->fence);
+}
+
 void lima_sched_pipe_fini(struct lima_sched_pipe *pipe)
 {
 	struct lima_sched_task *task;
@@ -958,13 +1009,13 @@ void lima_sched_pipe_fini(struct lima_sched_pipe *pipe)
 	 * forever: a job wedged on real hardware may simply never raise
 	 * another interrupt.
 	 */
-	while (pipe->current_task &&
+	while (pipe_task_in_flight(pipe) &&
 	       waited < LIMA_SCHED_PIPE_FINI_TIMEOUT_MS) {
 		msleep(LIMA_SCHED_PIPE_FINI_POLL_MS);
 		waited += LIMA_SCHED_PIPE_FINI_POLL_MS;
 	}
 
-	task = pipe->current_task;
+	task = pipe_task_in_flight(pipe) ? pipe->current_task : NULL;
 	if (task) {
 		DRM_ERROR("%s: pipe still busy %ums into teardown — GPU task "
 			  "did not complete or time out on its own; forcing "
@@ -994,6 +1045,18 @@ void lima_sched_pipe_fini(struct lima_sched_pipe *pipe)
 			dma_fence_signal(task->fence);
 		}
 
+		lima_vm_put(pipe->current_vm);
+		pipe->current_vm  = NULL;
+		pipe->current_task = NULL;
+
+	} else if (pipe->current_task != NULL) {
+		/*
+		 * Clean teardown with a completed task still recorded (the
+		 * normal case -- see pipe_task_in_flight above). Drop the VM
+		 * reference and the pointer here, because it used to happen
+		 * inside the wedge branch that always ran; without this the
+		 * reference would now leak on every unload.
+		 */
 		lima_vm_put(pipe->current_vm);
 		pipe->current_vm  = NULL;
 		pipe->current_task = NULL;

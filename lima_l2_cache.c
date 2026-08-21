@@ -46,6 +46,7 @@
 #include "lima_device.h"
 #include "lima_l2_cache.h"
 #include "lima_regs.h"
+#include <sys/sysctl.h>
 
 #define l2_cache_write(reg, data) \
 	writel(data, (uint8_t __iomem *)ip->iomem + (reg))
@@ -75,6 +76,25 @@ lima_l2_cache_wait_command(struct lima_ip *ip)
  * sideEffects: writes LIMA_L2_CACHE_COMMAND; serialised on ip->data.lock
  *            because lima_sched.c can call this from more than one pipe.
  */
+/*
+ * Sticky, userland-visible count of abandoned L2 flushes.
+ *
+ * This used to be a function-local static: it rate-limited the console message
+ * but could not be read from outside the driver, so "did any flush get
+ * abandoned during that run?" was only answerable by grepping dmesg for a
+ * message that is deliberately printed on powers of two. An abandoned flush is
+ * silent by construction (both callers in lima_sched.c ignore the return value,
+ * faithfully to upstream) and its only symptom is stale pixels or torn tiles,
+ * so the count is the sole evidence that it happened at all. Sticky across the
+ * whole module lifetime, in the style of the counters in
+ * drm/drm_gem_shmem_helper.c.
+ */
+static unsigned long l2_flush_timeouts;
+SYSCTL_ULONG(_compat_linuxkpi, OID_AUTO, lima_l2_flush_timeouts, CTLFLAG_RD,
+    &l2_flush_timeouts, 0,
+    "L2 cache flushes abandoned on timeout (stale pixels are the only other "
+    "symptom; both callers ignore the error, as upstream does)");
+
 int lima_l2_cache_flush(struct lima_ip *ip)
 {
 	int err;
@@ -108,13 +128,12 @@ int lima_l2_cache_flush(struct lima_ip *ip)
 		 * rendering makes every other message in the ring unreadable --
 		 * on this board the console ring is also the postmortem log.
 		 */
-		static unsigned long timeouts;
-
-		timeouts++;
-		if ((timeouts & (timeouts - 1)) == 0)
+		l2_flush_timeouts++;
+		if ((l2_flush_timeouts & (l2_flush_timeouts - 1)) == 0)
 			dev_err(ip->dev->dev,
-			    "l2 cache flush timed out (%lu so far)\n",
-			    timeouts);
+			    "l2 cache flush timed out (%lu so far, also in "
+			    "sysctl compat.linuxkpi.lima_l2_flush_timeouts)\n",
+			    l2_flush_timeouts);
 	}
 	return err;
 }

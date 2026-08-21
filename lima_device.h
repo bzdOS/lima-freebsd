@@ -161,7 +161,7 @@ struct lima_device {
 
 	/*
 	 * Voltage regulator.
-	 * LinuxKPI regulator_* shim.  On PinePhone Pro / A64 the GPU VDD
+	 * LinuxKPI regulator_* shim.  On the A64 the GPU VDD
 	 * is a fixed-factor regulator; devm_regulator_get() returns a
 	 * non-NULL stub that satisfies enable/disable calls.
 	 */

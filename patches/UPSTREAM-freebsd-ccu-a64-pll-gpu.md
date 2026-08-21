@@ -379,7 +379,7 @@ classes total; two other classes in the same directory, `aw_clk_prediv_mux`
 and the generic non-Allwinner `clknode_gate`, are correctly unaffected: the
 former has no gate concept at all, the latter already implements `get_gate`)
 and drafted a patch for all seven,
-`hal/lima/patches/freebsd-allwinner-clk-get-gate.patch` in this repository. I
+`hal/lima/patches/freebsd-src/freebsd-allwinner-clk-get-gate.patch` in this repository. I
 read that patch; its shape for the two classes this report already traced
 (`aw_clk_frac`, `aw_clk_m`) matches exactly what tracing `aw_clk_frac_set_gate()`
 and the `clknode_if.m`/`kobj_error_method` chain above would predict a correct

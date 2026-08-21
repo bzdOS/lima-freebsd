@@ -1,0 +1,98 @@
+From 39090bd6fdab0917d0b9c60a526491b87229b627 Mon Sep 17 00:00:00 2001
+From: Andrey Bodrov <ap.bodrov@gmail.com>
+Date: Wed, 19 Aug 2026 00:40:40 +0300
+Subject: [PATCH] linuxkpi: dma_alloc_coherent returned CACHEABLE memory on
+ arm64
+
+kmem_alloc_contig(..., VM_MEMATTR_DEFAULT) is WRITE_BACK on arm64, so the
+allocator whose entire contract is "no cache maintenance required" handed out
+cacheable memory and then gave its physical address to a device. On an
+architecture without coherent DMA that is exactly backwards: the CPU stores sit
+in cache, the device reads DRAM and sees stale contents, and nobody flushes
+anything because callers of this API are entitled to assume they need not. x86
+never notices, its DMA being coherent by architecture.
+
+Diagnosed rather than guessed. lima allocates its Mali GPU page tables through
+this path, and the GPU MMU faulted on an address whose PTE the CPU could read back
+perfectly well:
+
+    mmu page fault at 0x286000 ... of type read on gpmmu
+      -> PTE = 0x649371df: the page IS mapped
+
+That verdict comes from a probe added to lima s fault handler for this purpose,
+walking the live tables with the same macros as the mapping path. The mapping
+code, the TLB zap implementation and both of its call sites were each verified
+byte-identical to upstream Linux BEFORE reaching for a coherency explanation --
+the tables were correct and simply not visible to the device.
+
+Now VM_MEMATTR_UNCACHEABLE on aarch64/arm/riscv, which is what
+bus_dmamem_alloc(BUS_DMA_COHERENT) does in the same situation, and unchanged
+elsewhere so no platform gives up write-back caching for nothing.
+
+RESULT: first frame. Mali-400 renders, 5/5 runs, zero GPU MMU faults --
+  PASS stage A -- the PP executed a job
+  PASS stage B -- GP built a tile list and PP rasterised it
+  centre pixel = 0 255 0 255
+---
+ sys/compat/linuxkpi/common/src/linux_pci.c | 37 +++++++++++++++++++++-
+ 1 file changed, 36 insertions(+), 1 deletion(-)
+
+diff --git a/sys/compat/linuxkpi/common/src/linux_pci.c b/sys/compat/linuxkpi/common/src/linux_pci.c
+index fc8666c76..4c2facf3e 100644
+--- a/sys/compat/linuxkpi/common/src/linux_pci.c
++++ b/sys/compat/linuxkpi/common/src/linux_pci.c
+@@ -249,6 +249,20 @@ linux_pdev_dma_init(struct pci_dev *pdev)
+  */
+ #define	LINUX_DMA_TAG_NSEGMENTS	1024
+ 
++/*
++ * Memory attribute for dma_alloc_coherent(). "Coherent" is a promise to the
++ * caller that no cache maintenance is required, so on an architecture without
++ * coherent DMA it has to be uncacheable memory -- which is exactly what
++ * bus_dmamem_alloc(BUS_DMA_COHERENT) does for the same situation. Left as
++ * VM_MEMATTR_DEFAULT where DMA really is coherent, so nothing gives up write-back
++ * caching for no reason.
++ */
++#if defined(__aarch64__) || defined(__arm__) || defined(__riscv)
++#define	LKPI_DMA_COHERENT_MEMATTR	VM_MEMATTR_UNCACHEABLE
++#else
++#define	LKPI_DMA_COHERENT_MEMATTR	VM_MEMATTR_DEFAULT
++#endif
++
+ int
+ linux_dma_tag_init(struct device *dev, u64 dma_mask)
+ {
+@@ -1820,8 +1834,29 @@ linux_dma_alloc_coherent(struct device *dev, size_t size,
+ 	align = PAGE_SIZE << get_order(size);
+ 	/* Always zero the allocation. */
+ 	flag |= M_ZERO;
++	/*
++	 * VM_MEMATTR_DEFAULT is WRITE_BACK on arm64, which makes this allocator
++	 * return CACHEABLE memory -- and then hands the physical address to a
++	 * device. On an architecture whose DMA is not coherent that defeats the
++	 * entire point of dma_alloc_coherent(): the CPU's stores sit in its cache,
++	 * the device reads DRAM and sees stale contents, and no cache maintenance
++	 * happens anywhere because callers of this API are entitled to assume none
++	 * is needed. x86 never notices because its DMA is coherent by
++	 * architecture.
++	 *
++	 * Measured on a Mali-400 (lima) via drm-kmod, aarch64: lima allocates its
++	 * GPU page tables here, and the Mali MMU page-faulted on an address whose
++	 * PTE the CPU could read back perfectly well --
++	 *
++	 *   mmu page fault at 0x286000 ... of type read on gpmmu
++	 *     -> PTE = 0x649371df: the page IS mapped
++	 *
++	 * The mapping code, the TLB zap and its call sites were all verified
++	 * identical to upstream Linux first; the tables were simply never visible
++	 * to the device.
++	 */
+ 	mem = kmem_alloc_contig(size, flag & GFP_NATIVE_MASK, 0, high,
+-	    align, 0, VM_MEMATTR_DEFAULT);
++	    align, 0, LKPI_DMA_COHERENT_MEMATTR);
+ 	if (mem != NULL) {
+ 		*dma_handle = linux_dma_map_phys_common(dev, vtophys(mem), size,
+ 		    priv->dmat_coherent);
+-- 
+2.55.0
+

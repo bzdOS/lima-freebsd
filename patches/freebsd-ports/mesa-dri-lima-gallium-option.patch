@@ -1,0 +1,80 @@
+# Add a `lima` option to graphics/mesa-dri, so Mali-400/450 users get an
+# OpenGL ES driver from the package system instead of a hand-built Mesa.
+#
+# TARGET TREE: a FreeBSD ports checkout (apply with -p0 from its root).
+#   Do NOT apply this to drm-kmod or to freebsd-src -- see ../README.md.
+#
+# Why this patch exists, and why it is only three lines:
+#
+#   graphics/mesa-dri already builds every other gallium driver behind an
+#   option, and already ships the *display-only* half of the Allwinner
+#   pairing -- pkg-plist has `sun4i-drm_dri.so` unconditionally. What it has
+#   never had is `lima_dri.so`, the actual render driver. So on a Banana Pi
+#   M64, `pkg install mesa-dri` installs 49 `*_dri.so` files, the one for
+#   this SoC's GPU is not among them, and libgallium reports
+#   "lima: driver missing". The user's only route today is building Mesa by
+#   hand, outside the package system, where the next `pkg upgrade` of
+#   mesa-libs silently breaks the ABI underneath it.
+#
+#   Unlike panfrost, lima needs no libclc and no LLVM: its compilers (gpir
+#   for the vertex shader, ppir for the fragment shader) are self-contained.
+#   Hence no `lima_BUILD_DEPENDS` line. Measured, not assumed -- Mesa 26.2
+#   with `-Dgallium-drivers=lima -Dllvm=disabled` cross-builds all 997
+#   targets for FreeBSD/aarch64 and produces a real aarch64 `lima_dri.so`
+#   with gpir/ppir inside.
+#
+#   Utgard shipped on both 32-bit and 64-bit Allwinner parts (A20/H3 armv7,
+#   A64/H5 aarch64), so -- unlike panfrost, which this port excludes on
+#   armv7 -- lima is offered on both and excluded everywhere else.
+#
+# Evidence this driver actually works on FreeBSD/arm64, which is the part a
+# ports patch normally cannot claim: bzdOS ran this exact Mesa build against
+# a from-scratch FreeBSD lima kernel driver on a Banana Pi M64 and rendered
+# 7 textured, depth-tested, alpha-blended cubes -- 2420 draw calls per
+# frame, ~60 fps through DRM/KMS page flips, 0 GPU faults, no LIMA_DEBUG
+# flags. See https://github.com/bzdOS/lima-freebsd.
+#
+# The kernel side is the reason this option had no point before now: FreeBSD
+# has no in-tree lima(4). It is a real prerequisite, and it is honest to say
+# so -- this option is useful to anyone running the out-of-tree driver above,
+# and becomes useful to everyone if that driver lands in drm-kmod.
+#
+diff -u -r orig/graphics/mesa-dri/Makefile new/graphics/mesa-dri/Makefile
+--- graphics/mesa-dri/Makefile	2026-08-20 21:59:50.988442645 +0300
++++ graphics/mesa-dri/Makefile	2026-08-20 21:59:51.014252697 +0300
+@@ -31,7 +31,7 @@
+ WAYLAND_BUILD_DEPENDS=	wayland-protocols>=1.8:graphics/wayland-protocols
+ WAYLAND_LIB_DEPENDS=	libwayland-client.so:graphics/wayland
+ 
+-OPTIONS_GROUP_GALLIUM=	crocus i915 iris llvmpipe panfrost r300 r600 radeonsi svga
++OPTIONS_GROUP_GALLIUM=	crocus i915 iris lima llvmpipe panfrost r300 r600 radeonsi svga
+ GALLIUM_DESC=		Unified OpenGL drivers
+ crocus_DESC=		Intel GPU Gen4 (Broadwater) to Gen7 (Haswell)
+ crocus_BUILD_DEPENDS=	libclc-${LLVM_PORT:T}>0:devel/libclc@${LLVM_PORT:T}
+@@ -43,6 +43,7 @@
+ iris_RUN_DEPENDS=	spirv-tools>0:graphics/spirv-tools \
+ 			spirv-llvm-translator-${LLVM_PORT:T}>0:devel/spirv-llvm-translator@${LLVM_PORT:T}
+ iris_IMPLIES=		SPIRV
++lima_DESC=		ARM Utgard (Mali-400 and Mali-450)
+ llvmpipe_DESC=		Software Rasterizer
+ panfrost_DESC=		ARM Midgard and Bifrost
+ panfrost_BUILD_DEPENDS=	libclc-${LLVM_PORT:T}>0:devel/libclc@${LLVM_PORT:T}
+@@ -53,6 +54,7 @@
+ 
+ OPTIONS_EXCLUDE+=	${ARCH:Marmv7:C/.+/crocus i915 iris panfrost r300 r600 radeonsi svga/}
+ OPTIONS_EXCLUDE+=	${ARCH:Naarch64:C/.+/panfrost/}
++OPTIONS_EXCLUDE+=	${ARCH:Naarch64:Narmv7:C/.+/lima/}
+ OPTIONS_EXCLUDE+=	${ARCH:Namd64:Ni386:Nx86_64:C/.+/crocus i915 iris svga/}
+ MESON_ARGS+=		-Dgallium-drivers=${GALLIUM_DRIVERS:ts,}
+ . for _gd in ${OPTIONS_GROUP_GALLIUM}
+diff -u -r orig/graphics/mesa-dri/pkg-plist new/graphics/mesa-dri/pkg-plist
+--- graphics/mesa-dri/pkg-plist	2026-08-20 21:59:50.989739358 +0300
++++ graphics/mesa-dri/pkg-plist	2026-08-20 21:59:51.014314856 +0300
+@@ -19,6 +19,7 @@
+ %%X11%%%%llvmpipe%%lib/dri/kms_swrast_dri.so
+ %%X11%%lib/dri/komeda_dri.so
+ %%X11%%lib/dri/libdril_dri.so
++%%X11%%%%lima%%lib/dri/lima_dri.so
+ %%X11%%lib/dri/mali-dp_dri.so
+ %%X11%%lib/dri/mcde_dri.so
+ %%X11%%lib/dri/mediatek_dri.so

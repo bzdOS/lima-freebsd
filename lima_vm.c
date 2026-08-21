@@ -88,6 +88,14 @@ static int lima_vm_map_page(struct lima_vm *vm, dma_addr_t pa, u32 va)
 	u32 pbe = LIMA_PBE(va);
 	u32 bte = LIMA_BTE(va);
 
+	/* See the page-directory check below: the leaf PTE is a u32 too. */
+	if (pa > (dma_addr_t)UINT32_MAX - LIMA_PAGE_SIZE + 1) {
+		dev_err(vm->dev->dev,
+		    "buffer page at %#jx is above 4 GiB; Mali-400's MMU "
+		    "entries are 32-bit\n", (uintmax_t)pa);
+		return -ERANGE;
+	}
+
 	if (!vm->bts[pbe].cpu) {
 		dma_addr_t pts;
 		u32 *pd;
@@ -96,7 +104,7 @@ static int lima_vm_map_page(struct lima_vm *vm, dma_addr_t pa, u32 va)
 		/*
 		 * FreeBSD: use dma_alloc_coherent instead of dma_alloc_wc.
 		 * drm-66-kmod LinuxKPI does not expose a write-combining variant.
-		 * Coherent is correct and safe on aarch64 (A64 PinePhone Pro).
+		 * Coherent is correct and safe on aarch64 (Allwinner A64).
 		 * __GFP_NOWARN and __GFP_ZERO are honoured by LinuxKPI.
 		 */
 		vm->bts[pbe].cpu = dma_alloc_coherent(
@@ -108,6 +116,29 @@ static int lima_vm_map_page(struct lima_vm *vm, dma_addr_t pa, u32 va)
 			return -ENOMEM;
 
 		pts = vm->bts[pbe].dma;
+
+		/*
+		 * Mali-400's MMU is genuinely 32-bit: both the page-directory
+		 * and page-table entries below are u32, so a DMA address above
+		 * 4 GiB does not fit and the `pts | flags` store would silently
+		 * keep only the low 32 bits -- pointing the GPU's MMU at some
+		 * unrelated page instead of failing. Refuse instead of
+		 * truncating. Unreachable on a 1 GiB A64, reachable on any
+		 * board with memory above 4 GiB, which is why it is checked
+		 * rather than assumed.
+		 */
+		if ((pts + (dma_addr_t)LIMA_PAGE_SIZE *
+		    LIMA_VM_NUM_PT_PER_BT - 1) > (dma_addr_t)UINT32_MAX) {
+			dev_err(vm->dev->dev,
+			    "page tables at %#jx are above 4 GiB; Mali-400's "
+			    "MMU entries are 32-bit\n", (uintmax_t)pts);
+			dma_free_coherent(vm->dev->dev,
+			    LIMA_PAGE_SIZE << LIMA_VM_NUM_PT_PER_BT_SHIFT,
+			    vm->bts[pbe].cpu, vm->bts[pbe].dma);
+			vm->bts[pbe].cpu = NULL;
+			return -ERANGE;
+		}
+
 		pd = vm->pd.cpu + (pbe << LIMA_VM_NUM_PT_PER_BT_SHIFT);
 		for (j = 0; j < LIMA_VM_NUM_PT_PER_BT; j++) {
 			pd[j] = pts | LIMA_VM_FLAG_PRESENT;

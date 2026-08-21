@@ -56,7 +56,8 @@ DRM driver to FreeBSD, they are probably what you need first.
 | `drm/drm_gem_shmem_logic.h`, `tests/test_shmem_logic.c` | the refcount/state logic split out so it can be unit-tested on the host |
 | `linux/platform_device.{c,h}` | newbus/FDT ↔ LinuxKPI platform_device bridge |
 | `linux/{clk,reset,interrupt}.h`, `linux/regulator/consumer.h` | local shims for the LinuxKPI headers that are stubs |
-| `patches/` | fixes required in FreeBSD and drm-kmod — see below |
+| `patches/` | fixes required in FreeBSD, drm-kmod and ports — see below, and `patches/UPSTREAM-INDEX.md` |
+| `EXTRACTION.md` | what travels and what does not, and why — read this before reusing any of it |
 | `tests/` | `limabench` (the real workload), `limatri` (one triangle), ioctl smoke tests, host-side unit tests |
 | `mesa/` | notes on cross-building Mesa 26.2 with the lima gallium driver for FreeBSD/arm64 |
 
@@ -88,7 +89,19 @@ symbol step uses BSD-only `xargs -J`. drm-kmod is expected at tag
 ## Patches this needs, and why (`patches/`)
 
 These are **bugs in other trees**, each diagnosed from a symptom on real
-hardware. Three carry full write-ups (`patches/UPSTREAM-*.md`).
+hardware. **Ten of them, across three trees** — FreeBSD base, drm-kmod, and the
+ports tree. `patches/UPSTREAM-INDEX.md` is the full list with apply order, which
+board depends on which, and where each write-up lives; four carry their
+reasoning as a header inside the patch file rather than a separate document.
+
+**One of them is not a porting fix and matters to people who have never heard of
+this driver:** `patches/drm-kmod/drm-kmod-dri-sysctl-lifecycle.patch`. drm-kmod
+puts the shared `hw.dri` sysctl node into a per-device context, so
+`sysctl_ctx_free()` fails with EBUSY and removes nothing while cleanup frees the
+struct those OIDs point into. An **unprivileged `sysctl -a` then panics the
+kernel**, and GL breaks after any driver reload until reboot. No lima, no Mali
+and no bzdOS needed to reproduce — any FreeBSD machine running a DRM driver
+where debugfs is unavailable.
 
 **FreeBSD** (`sys/compat/linuxkpi/common/src/linux_pci.c`, unless noted):
 
@@ -119,7 +132,9 @@ hardware. Three carry full write-ups (`patches/UPSTREAM-*.md`).
   to sit in readable heap memory and the bus id comes out silently garbage — a
   latent landmine, not a solution. The patch guards it with `dev_is_pci()`.
 
-None of these have been submitted upstream yet.
+None of these have been submitted upstream yet — that needs the author's own
+accounts, not more engineering. `patches/UPSTREAM-INDEX.md` exists so whoever
+sends them does not have to re-derive anything.
 
 ---
 
@@ -177,6 +192,13 @@ What you must do now:
    that a later `pkg install` will not overwrite. Note `pkg lock` does not help:
    it locks an installed *package*, and a hand-built Mesa is not one.
 
+   **There is now a patch for that wall too**:
+   `patches/freebsd-ports/mesa-dri-lima-gallium-option.patch` adds a `lima`
+   option to `graphics/mesa-dri`, following the `panfrost` pattern — three lines
+   in the Makefile plus one `pkg-plist` entry, and deliberately no libclc/LLVM
+   dependency, because lima's gpir/ppir compilers need neither. Until it is
+   merged the hand-build above is still the only route.
+
 Three things would turn that into something an ordinary FreeBSD user can
 install, in rising order of effort:
 
@@ -185,7 +207,7 @@ install, in rising order of effort:
   enabled there, so the precedent and the machinery both exist. This is the
   single highest-leverage change and it is not in this repo — it belongs in the
   FreeBSD ports tree.
-- **Upstream the eight patches** (see above), so step 3 disappears.
+- **Upstream the ten patches** (see `patches/UPSTREAM-INDEX.md`), so step 3 disappears.
 - **Upstream the driver into drm-kmod**, so step 1 disappears too. The two
   infrastructure pieces here (`drm/drm_gem_shmem_helper.c` and
   `linux/platform_device.{c,h}`) are the parts drm-kmod would need regardless,
