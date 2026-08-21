@@ -169,7 +169,7 @@ struct lima_ip_desc {
  * output:   consumed by lima_{init,fini,resume,suspend}_ip
  * sideEffects: none — read-only data; initialised at compile time
  *
- * Allwinner A64 (Banana Pi M64) is Mali-400 MP2:
+ * Allwinner A64 (PinePhone, Banana Pi M64) is Mali-400 MP2:
  *   only mali400 column applies; mali450 entries with offset -1 are skipped.
  * MMIO base: MALI_MMIO_BASE (0x01C40000) from ../mali_uio.h.
  * Each ip->iomem = dev->iomem + offset[dev->id].

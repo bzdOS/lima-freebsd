@@ -2,8 +2,9 @@
 /*
  * linux/regulator/consumer.h — voltage regulator stub for Lima / FreeBSD 15.1
  *
- * No regulator framework in linuxkpi.  All no-ops; on PinePhone Pro the GPU
- * VDD is a fixed-factor regulator managed by the PMIC driver at boot.
+ * No regulator framework in linuxkpi.  All no-ops; on the Allwinner A64
+ * (PinePhone, Banana Pi M64) the GPU VDD is a fixed-factor regulator managed by
+ * the PMIC driver at boot.
  */
 
 #ifndef _LIMA_LINUX_REGULATOR_CONSUMER_H_

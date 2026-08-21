@@ -35,7 +35,8 @@
  * driver source code.  All offsets and bit positions are identical to the
  * Linux original; only the SPDX licence tag and the BIT() guard differ.
  *
- * Target: FreeBSD 15.1 aarch64, Allwinner A64 (Banana Pi M64 — Chimp)
+ * Target: FreeBSD 15.1 aarch64, Allwinner A64 — PinePhone (Woodpecker v0.3)
+ * and Banana Pi M64 (Chimp v0.2), both Mali-400 MP2
  *         Loaded as part of the lima.ko drm-66-kmod kernel module.
  *
  * Porting notes
