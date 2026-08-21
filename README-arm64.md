@@ -20,8 +20,17 @@ there needed three fixes outside this file's scope — a drm-kmod `/dev/dri` ali
 leak that panicked any second probe, a real `lima_pmu.c`, and the discovery that
 `ccu_a64.c` cannot enable `PLL_GPU` at all. See `MALI-STATUS.md`.
 
-One thing that heading's successor must not overclaim: attach is **not** rendering
-— no submit path has been exercised and no Mesa/lima userland exists on the board.
+One thing that heading's successor must not overclaim: attach is **not**
+rendering.
+
+**That caveat has since been overtaken by events, and this line said so far too
+long.** It used to end "no submit path has been exercised and no Mesa/lima
+userland exists on the board", which was accurate on 2026-08-11 and false from
+2026-08-19 onward. Measured since: Mesa 26.2 with `-Dgallium-drivers=lima`
+cross-built and installed on the board, textured and depth-tested geometry
+rendering (2420 draw calls per frame), zero-copy presentation at 1030 fps, and
+3601 DRM/KMS page flips with 0 refused in a 60-second run paced by the real
+panel vblank. See `MALI-STATUS.md` for the numbers and how each was taken.
 
 Attach needed an opt-in `kenv hw.lima.force_pll_gpu=1` stopgap for the first few
 hours. The guest kernel has since been rebuilt with the real clk(9) fix
@@ -142,6 +151,8 @@ platform device and the `dma_resv` locking discipline are kernel-only and have
 header: imported PRIME buffers cannot be `mmap()`ed (drm-kmod's dmabuf has no
 `dma_buf_mmap()`), and `drm_gem_shmem_purge()` cannot invalidate live userspace
 mappings (FreeBSD's device mapping is not reachable from the GEM object).
+
+  **FIXED since this was written** — `patches/drm-kmod/drm-kmod-dma-buf-mmap.patch` adds the missing `dma_buf_mmap()`, and it is now a build prerequisite rather than an optional extra: without it `drm/drm_gem_shmem_helper.c` does not compile. The imported-PRIME mmap path is exercised on every frame of the zero-copy presentation route (1030 fps measured), and `tests/limaread` reads an imported dma-buf back through an FBO with 0 of 16384 pixels wrong.
 
 ### 2. There is no path from the FDT to `lima_pdev_probe`
 

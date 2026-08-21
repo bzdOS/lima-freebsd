@@ -4,7 +4,7 @@
 > before any of it worked, kept for its reasoning, and its headline statements are
 > now FALSE. Specifically: "Nothing has rendered. No GP or PP job has ever been
 > submitted; no Mesa/lima userland exists anywhere in this project" (§ near the
-> top) and "Mesa is not a realistic near-term milestone" (§ near the end) were
+> top) and "Mesa is not a realistic near-term milestone [**WRONG, and worth recording as such: Mesa was cross-built and rendering eight days later. The estimate was the most expensive error in this document.**]" (§ near the end) were
 > both overtaken. The Mali-400 renders — `tests/limabench.c` passes 4/4 with a
 > sampled texture, 2420 draw calls, depth testing and alpha blending, zero GPU
 > MMU faults — and Mesa 26.2's lima gallium driver runs on this port unmodified,
@@ -35,9 +35,14 @@ dated 2026-08-11):
   `clk_prepare_enable()` on the GPU core clock silently succeeds while `PLL_GPU`
   stays unlocked, and the first MMIO read into the Mali block never returns
   (`MALI-STATUS.md:23-64`, `hal/lima/lima_ccu_debug.c:158-207`).
-- **Nothing has rendered.** No GP or PP job has ever been submitted; no Mesa/lima
-  userland exists anywhere in this project (`MALI-STATUS.md:65-66`,
-  `README-arm64.md:23-27`).
+- ~~**Nothing has rendered.** No GP or PP job has ever been submitted; no
+  Mesa/lima userland exists anywhere in this project.~~ **This plan's premise
+  expired on 2026-08-19.** Both halves are now false: Mesa 26.2 is built with
+  `-Dgallium-drivers=lima` and installed on the board, and the GPU renders
+  textured, depth-tested, alpha-blended geometry at 2420 draw calls per frame.
+  The document is kept because its *reasoning* about what would be needed turned
+  out to be largely right and is the record of how the route was chosen — but do
+  not read its status statements as current. `MALI-STATUS.md` is.
 - Two specific, already-documented functional gaps in the kernel port
   (`hal/lima/drm/drm_gem_shmem_helper.c:37-54`, confirmed by reading the code at
   `drm_gem_shmem_helper.c:766-782` and `:606-648`):

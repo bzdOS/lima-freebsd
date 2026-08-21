@@ -910,11 +910,21 @@ int lima_sched_pipe_init(struct lima_sched_pipe *pipe, const char *name)
  *             block on real hardware once the steps above have run)
  * sema:end
  *
- * UNTESTED ON HARDWARE (2026-08-20): this path was written and reviewed
- * from source inspection only — see hal/lima/MALI-STATUS.md / commit
- * message for the analysis.  The board was in active use by another agent
- * at the time this was written and could not be used to reproduce the
- * kldunload hang or verify the fix live.
+ * VERIFIED ON HARDWARE 2026-08-21. This used to say "UNTESTED ON HARDWARE
+ * ... written and reviewed from source inspection only", which was true when
+ * written and is not any more:
+ *
+ *   - The reordering half runs on every unload. `kldunload lima` after a
+ *     render takes 0.06 s, prints nothing, and leaves no UMA "keg not empty"
+ *     warning -- the symptom whose absence is the regression test.
+ *   - The bounded-teardown half was forced deliberately, via the new
+ *     sysctl compat.linuxkpi.lima_fake_wedge, because with the predicate
+ *     fixed (see pipe_task_in_flight) it is correctly never taken on healthy
+ *     hardware. Forced, it does exactly what it claims: bounded at
+ *     LIMA_SCHED_PIPE_FINI_TIMEOUT_MS per pipe, logs the DRM_ERROR, calls
+ *     task_error() on both pipes, the unload COMPLETES rather than hanging,
+ *     no panic from force-signalling with -ENODEV, and a subsequent kldload
+ *     attaches and renders.
  *
  * Root cause this addresses (see commit message for the full trace):
  *

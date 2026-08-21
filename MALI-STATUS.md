@@ -165,6 +165,13 @@ Worth more than the tidiness: this observes the clock enable through a completel
 different path from the in-driver CCU dump that diagnosed it, and agrees.
 
 ### The GPU's interrupts are registered and have never fired
+### — SUPERSEDED 2026-08-19: they fire constantly
+
+Left as a heading because the section below it is a useful account of how the IRQ
+bridge was wired and what was uncertain at the time. But the claim in the heading
+is dead: GP and PP interrupts now fire on every job, which is how 2420 draw calls
+per frame retire at all, and `limakms` completes 3601 page flips in 60 s with the
+scheduler never invoking its recovery path.
 
 `vmstat -ia` (note the `-a` — plain `vmstat -i` hides zero-count sources,
 `usr.bin/vmstat/vmstat.c:1229`, and reading its absence as "not registered" is a
@@ -186,9 +193,16 @@ bridge the largest *untested* piece rather than a known-broken one, and
 
 ### What still needs doing
 
-- Nothing has *rendered* yet. Attach is not a working GPU: no submit path has
-  been exercised, no Mesa/lima userland is present. `PLAN-mesa-lima.md` has the
-  sequenced plan; its first milestone is a native-ioctl PP clear job, not Mesa.
+- ~~Nothing has *rendered* yet. Attach is not a working GPU: no submit path has
+  been exercised, no Mesa/lima userland is present.~~ **DONE, 2026-08-19.** This
+  item is struck rather than deleted so the sequence stays legible: it was the
+  open question for eight days and then stopped being one. Mesa 26.2 with
+  `-Dgallium-drivers=lima` is built and installed on the board, and the GPU
+  renders textured, depth-tested, alpha-blended geometry — 2420 draw calls per
+  frame — with zero-copy presentation at 1030 fps and DRM/KMS page flips at
+  60 fps paced by the real panel vblank. `PLAN-mesa-lima.md`'s milestones are
+  all behind us; the native-ioctl PP clear job it planned as the first step was
+  overtaken by going straight to Mesa.
 - 15 further Allwinner clocks share the missing-flag bug (a31/a64/h3) and A83T's
   two CPU-cluster PLLs have their gate/lock macro arguments transposed so
   `set_gate` writes bit 0 instead of 31. Neither affects this board; both are

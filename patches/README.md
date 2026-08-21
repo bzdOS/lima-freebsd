@@ -220,33 +220,38 @@ but nothing in this tree would call it.
   `drm_gem_object_put()` transcribed from `drm-kmod/include/drm/drm_gem.h`;
   it also compiles clean.
 
-**What has NOT been tested, at all:**
+**STATUS 2026-08-21 — the section that used to sit here is deleted, because it
+had become false.**
 
-- No kernel build. The above is a standalone, hand-written type/syntax check
-  against extracted declarations, run with the host's `gcc`/`clang` — not
-  `build-drm-kmod-arm64.sh`, not `build-lima-arm64.sh`, not any FreeBSD
-  kernel or module build. It cannot see real linuxkpi macro expansions,
-  header ordering, or FreeBSD-kernel-only diagnostics beyond what was
-  manually reproduced, and it proves nothing about linking.
-- Nothing was loaded, no `dma_buf_mmap()` call has ever executed, and no
-  actual `mmap()` of an imported PRIME buffer has been attempted — board-free
-  by this task's constraints, and there is no aarch64 `drm.ko`/`dmabuf.ko`
-  build on this host to load even off-board (see `README-arm64.md`).
-- `obj->dma_buf` being non-NULL by the time `drm_gem_shmem_mmap()`'s import
-  branch runs is based on reading `drm_gem_prime_fd_to_handle()`
-  (`drm_prime.c`), not on tracing a live ioctl.
-- Nothing in `hal/lima` reaches this code at runtime YET, but **not for the
-  reason stated when this was written.** That text said "`lima_pdev_probe` is
-  still dead code"; it is not — the driver probes and attaches on real hardware
-  as of 2026-08-11 (`MALI-STATUS.md`, `[drm] Initialized lima 1.1.0`). The real
-  reason is simply that nothing has ever *imported a PRIME buffer* on this
-  board: no userspace client exists yet at all (see `PLAN-mesa-lima.md`), and
-  the first planned tests deliberately use the non-import mmap branch.
-- The fork(2)-inherited-vma edge case the omitted `vma_set_file()` would
-  have covered is not proven either way.
-- The *other* known functional gap (`drm_gem_shmem_purge()` cannot invalidate
-  live userspace mappings, deviation #4 in `drm_gem_shmem_helper.c`'s header)
-  is untouched by this patch and remains open.
+It said, in a public repository, that this patch had "NOT been tested, at all":
+no kernel build, `dma_buf_mmap()` never executed, nothing loaded, no aarch64
+`drm.ko`/`dmabuf.ko` build on the host, and nothing in `hal/lima` reaching the
+code at runtime. Every one of those statements was true when written and none of
+them is true now, and leaving it up told readers a load-bearing patch was
+untested guesswork.
+
+What is actually the case:
+
+- `build-drm-kmod-arm64.sh` applies this patch on **every** build and refuses to
+  build a tree whose patch state it cannot verify. The resulting `drm.ko` is the
+  one running on the board.
+- `dma_buf_mmap()` executes constantly. It is on the zero-copy presentation
+  path: a client renders into a `gbm_surface`, exports the front buffer's
+  dma-buf, and it is imported and mapped. Measured **1030 fps** through that
+  path, and **3601 DRM/KMS page flips with 0 refused** in a 60-second run.
+- PRIME import of a foreign dma-buf works, including the case that had been
+  written off as dangerous: `tests/limaread` attaches an imported dma-buf to an
+  FBO and reads it back — `0 of 16384 pixels wrong`.
+- The `fork(2)`-inherited-vma edge case the omitted `vma_set_file()` would have
+  covered is **still** not proven either way. That one line of the old section
+  survives, because it is the only part still accurate.
+- The other known gap — `drm_gem_shmem_purge()` cannot invalidate live userspace
+  mappings, deviation 4 in `drm/drm_gem_shmem_helper.c` — is untouched by this
+  patch and **has still never executed**. Nothing calls it: lima has no madvise
+  ioctl and no shrinker, matching upstream.
+
+The type/syntax evidence above it still stands on its own merits and is left
+as-is; it simply is no longer the *only* evidence.
 
 Not upstreamed, for the same reason as the alias-lifecycle fix above: this
 project has no drm-kmod contribution path set up. Unlike that fix, this one

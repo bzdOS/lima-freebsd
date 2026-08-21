@@ -23,6 +23,13 @@ dependency.
 
 ## 1. The `nonpci-busid` patch cannot be applied — `patch` rejects the file
 
+> **RESOLVED.** The patch was regenerated as a real unified diff and now
+> applies cleanly to a pristine `drm_sysctl_freebsd.c` — re-verified 2026-08-21
+> after it was extended (the fallback busid must vary per device or Mesa cannot
+> tell two DRM devices apart). Checked by reverse-applying to recover the
+> original file and then re-applying the pair in order: the result is identical
+> to the working tree byte-for-byte.
+
 **Claim.** The fix for a drm-kmod defect that has already panicked one driver in
 this tree is quarantined behind a file that `patch(1)` refuses to read.
 
@@ -71,6 +78,12 @@ same latent landmine, and this is the patch that removes it.
 ---
 
 ## 2. The single fix the whole port depends on exists only as an uncommitted edit
+
+> **RESOLVED.** The `ccu_a64.c` `AW_CLK_HAS_GATE` fix is now both a commit
+> (`f38f90d1e`) and a patch file
+> (`patches/freebsd-src/freebsd-ccu-a64-pll-gpu.patch`, 2399 bytes), listed in
+> `patches/UPSTREAM-INDEX.md` as #3 with its write-up. It is no longer reachable
+> only as a working-tree edit that a fetch could erase.
 
 **Claim.** `ccu_a64.c`'s `AW_CLK_HAS_GATE` on `pll_gpu_clk` — the fix without
 which the GPU cannot be clocked at all — is a dirty working-tree edit with no
@@ -236,6 +249,30 @@ deliverable itself.
 
 ## 5. The port's five design documents are frozen at 2026-08-11/12 and now state the opposite of the truth
 
+> **RESOLVED 2026-08-21 — and the first attempt at this was not enough.**
+> Banners were added at the top of the affected documents earlier, but the false
+> statements stayed in the bodies, so a reader landing mid-document still got
+> them. Corrected in place, at the sentence:
+>
+> - `README-arm64.md` — "no submit path has been exercised and no Mesa/lima
+>   userland exists on the board", and the imported-PRIME-cannot-be-mmaped gap
+>   (fixed by a patch that is now a build prerequisite).
+> - `MALI-STATUS.md` — the "Nothing has *rendered* yet" to-do is struck rather
+>   than deleted, and the heading "The GPU's interrupts are registered and have
+>   never fired" is superseded in place: they fire on every job.
+> - `PLAN-mesa-lima.md` — its premise ("Nothing has rendered ... no Mesa/lima
+>   userland exists anywhere in this project") is struck, and its verdict "Mesa
+>   is not a realistic near-term milestone" is annotated as the most expensive
+>   error in the document: Mesa was cross-built and rendering eight days later.
+> - `patches/README.md` — a whole section headed "**What has NOT been tested, at
+>   all:**" claimed no kernel build, `dma_buf_mmap()` never executed, nothing
+>   loaded. That patch is applied on every build, is in the running `drm.ko`,
+>   and carries the zero-copy path at 1030 fps. Replaced with the measured
+>   state; the one line still accurate (the `fork(2)`-inherited-vma case) is
+>   kept.
+> - `lima_sched.c` — "UNTESTED ON HARDWARE" on the teardown path, which was
+>   verified live the same day, including forcing the recovery branch.
+
 **Claim.** The documents a newcomer reads first say the GPU has never rendered.
 This is not a cosmetic staleness — the load-bearing verdicts are inverted.
 
@@ -288,6 +325,20 @@ itself. `SCANOUT-IMPORT.md` and `hvfb/` do not travel at all (item 12).
 
 ## 6. `lima_l2_cache_flush()`'s return value is ignored by both callers
 
+> **HALF DONE, deliberately (2026-08-21).** The observable half is in: the
+> timeout counter was a function-local static, invisible from userland, and is
+> now `sysctl compat.linuxkpi.lima_l2_flush_timeouts` — sticky for the module's
+> lifetime, in the style of the counters in `drm/drm_gem_shmem_helper.c`. So
+> "did any flush get abandoned during that run?" is now answerable after the
+> fact instead of only by grepping dmesg for a message printed on powers of two.
+> Measured since: **0**.
+>
+> The other half — propagating the error out of `lima_sched_run_job()` as a job
+> failure — is **not** done, on purpose. It is a behaviour change on the hot
+> path that turns a silent risk into a visible job failure, this item's own
+> "next step" says it needs a soak first, and with the counter at 0 there is
+> currently nothing to soak against. Revisit if the counter ever moves.
+
 **Claim.** An abandoned L2 flush is indistinguishable from a successful one at
 both call sites, and its only symptom is wrong pixels.
 
@@ -324,6 +375,15 @@ to offer upstream, not a prerequisite.
 ---
 
 ## 7. Every BO is mapped `LIMA_VM_FLAGS_CACHE`; `LIMA_VM_FLAGS_UNCACHE` is dead
+
+> **CLOSED AS A DECISION, not as code (2026-08-21).** This item's own analysis
+> already reached the right answer and it is worth making that explicit rather
+> than leaving it looking open: **do not change the default.** It is upstream
+> parity (Linux 6.12 has the same unconditional `pa | LIMA_VM_FLAGS_CACHE` and
+> an equally unused `UNCACHE`), the failure mode it predicts was actively looked
+> for and not found, and changing it would be exactly the kind of divergence
+> from upstream an extraction should avoid. The cheap decisive experiment is
+> recorded below if it is ever revisited.
 
 **Claim.** There is no per-BO cache policy. A scanout buffer written by the PP and
 read by the display engine gets the same cacheable Mali PTE as a texture.
@@ -691,7 +751,7 @@ boundary is visible in the tree rather than only in prose.
 
 ## 13. bzkms's vblank is a callout, and its rate cannot express the mode
 
-> **NOT PART OF THIS EXTRACTION.** `bzkms` is the bzdOS-side DRM/KMS device (see
+> **NOT PART OF THIS EXTRACTION.** `bzkms` is the bzdk-side DRM/KMS device (see
 > `EXTRACTION.md`) and does not ship here. Resolved on that side 2026-08-21 —
 > the vblank is now observed from the real panel rather than generated by a
 > local timer — but nothing in this repository depends on it.
