@@ -654,7 +654,7 @@ module_platform_driver(lima_platform_driver);
  * Without these, kldload of this module fails with
  * "link_elf: symbol sysctl___hw_dri undefined" even though drm.ko is already
  * loaded and genuinely exports that symbol. Root cause (see
- * README-arm64.md): sys/kern/kern_linker.c's linker_file_lookup_symbol_internal()
+ * docs/README-arm64.md): sys/kern/kern_linker.c's linker_file_lookup_symbol_internal()
  * resolves a module's undefined references ONLY against itself, the kernel
  * proper (always implicit), and its own linker_file->deps[] — which is
  * populated exclusively from THIS module's own MODULE_DEPEND() metadata, one

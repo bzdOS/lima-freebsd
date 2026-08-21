@@ -76,7 +76,7 @@ It cost this project a day: the panic was misread as "making lima's clock
 enables real crashes the board", because the first load of the rebuilt lima.ko
 came after an earlier load had already failed in the same boot, so it panicked
 in `drm_dev_alloc()` before `lima_clk_enable()` was ever reached. See
-`hal/lima/MALI-STATUS.md`.
+`../docs/MALI-STATUS.md`.
 
 The fix is the missing half of the pair:
 

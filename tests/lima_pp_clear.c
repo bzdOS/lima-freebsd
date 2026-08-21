@@ -16,7 +16,7 @@
  * driver (old Limare, current Mesa, ARM's own GPL driver) has ever exercised
  * a PP submission with no preceding GP job, which is exactly what this
  * program does. The kernel performs *no* content validation of any of this
- * (PP-CLEAR-FRAME.md section 7) — a bad value here goes straight to real
+ * (tests/PP-CLEAR-FRAME.md section 7) — a bad value here goes straight to real
  * Mali-400 silicon.
  *
  * THIS PROGRAM HAS NEVER BEEN RUN. It has been read for syntax/type
@@ -55,7 +55,7 @@
  *    Field names/order/types match that header exactly (verified against it,
  *    plus an independent copy at /usr/include/drm/lima_drm.h on this host,
  *    plus upstream github.com/torvalds/linux — all three agree byte-for-byte,
- *    see PP-CLEAR-FRAME.md section 3). __u32/__u64/__s64 -> uint32_t/
+ *    see tests/PP-CLEAR-FRAME.md section 3). __u32/__u64/__s64 -> uint32_t/
  *    uint64_t/int64_t: identical ABI, different spelling only.
  * ======================================================================== */
 
@@ -107,7 +107,7 @@ _Static_assert(sizeof(struct drm_lima_gem_submit_bo) == 8,
 #define LIMA_PP_FRAME_REG_NUM 23
 #define LIMA_PP_WB_REG_NUM    12
 
-/* Mali-400 PP frame — see PP-CLEAR-FRAME.md sections 3-5 for every field. */
+/* Mali-400 PP frame — see tests/PP-CLEAR-FRAME.md sections 3-5 for every field. */
 struct drm_lima_m400_pp_frame {
 	uint32_t frame[LIMA_PP_FRAME_REG_NUM];
 	uint32_t num_pp;
@@ -215,7 +215,7 @@ _Static_assert(sizeof(struct drm_lima_ctx_free) == 8,
 
 /* ===========================================================================
  * 2. Frame-content constants. Every value here is explained, with
- *    provenance, in PP-CLEAR-FRAME.md sections 4/5/6. Do not change a value
+ *    provenance, in tests/PP-CLEAR-FRAME.md sections 4/5/6. Do not change a value
  *    here without updating that document, and vice versa.
  * ======================================================================== */
 
@@ -224,14 +224,14 @@ _Static_assert(sizeof(struct drm_lima_ctx_free) == 8,
 #define TARGET_BPP    4u
 #define TARGET_BO_SIZE (TARGET_WIDTH * TARGET_HEIGHT * TARGET_BPP)  /* 16384 */
 
-/* 16px-per-tile hardware tile grid (PP-CLEAR-FRAME.md section 6.1). */
+/* 16px-per-tile hardware tile grid (tests/PP-CLEAR-FRAME.md section 6.1). */
 #define TILE_PX       16u
 #define TILE_GRID_W   (TARGET_WIDTH  / TILE_PX)   /* 4 */
 #define TILE_GRID_H   (TARGET_HEIGHT / TILE_PX)   /* 4 */
 #define NUM_TILES     (TILE_GRID_W * TILE_GRID_H) /* 16 */
 #define TILE_POLY_SCRATCH_SIZE 0x200u              /* per tile, section 6.2 */
 
-/* Scratch BO layout (PP-CLEAR-FRAME.md section 8.2). Each region must not
+/* Scratch BO layout (tests/PP-CLEAR-FRAME.md section 8.2). Each region must not
  * overlap the next: render_state [0x000,0x040), tile array [0x100,0x210)
  * (NUM_TILES*16 + 16 bytes = 272 = 0x110), so poly scratch cannot start
  * before 0x210 -- rounded up to 0x400 for a clean, generously separated
@@ -241,7 +241,7 @@ _Static_assert(sizeof(struct drm_lima_ctx_free) == 8,
 #define SCRATCH_POLY_SCRATCH_OFF 0x400u  /* NUM_TILES * TILE_POLY_SCRATCH_SIZE, ends at 0x2400 */
 #define SCRATCH_BO_SIZE          0x3000u /* 12288, comfortably covers all three (need 0x2400) */
 
-/* Clear colour: four DISTINCT byte values on purpose (PP-CLEAR-FRAME.md
+/* Clear colour: four DISTINCT byte values on purpose (tests/PP-CLEAR-FRAME.md
  * section 5.1) so a channel swap is visible in the read-back instead of
  * hiding behind a colour like solid red or grey. Packed as
  * R | G<<8 | B<<16 | A<<24 per Mesa's "Clear Value 8bpc Color" bit layout. */
@@ -257,7 +257,7 @@ _Static_assert(sizeof(struct drm_lima_ctx_free) == 8,
  * "the GPU never wrote here" rather than "it wrote the wrong thing". */
 #define SENTINEL_BYTE 0xAAu
 
-/* frame[] word indices — names/positions from PP-CLEAR-FRAME.md section 4. */
+/* frame[] word indices — names/positions from tests/PP-CLEAR-FRAME.md section 4. */
 enum {
 	FRAME_W_PLBU_ARRAY_ADDR = 0,  /* clobbered by the kernel, lima_pp.c */
 	FRAME_W_RSW             = 1,
@@ -284,7 +284,7 @@ enum {
 	FRAME_W_CHANNEL_LAYOUT  = 22,
 };
 
-/* wb[] word indices, one write-back unit (PP-CLEAR-FRAME.md section 5). */
+/* wb[] word indices, one write-back unit (tests/PP-CLEAR-FRAME.md section 5). */
 enum {
 	WB_W_TYPE         = 0,
 	WB_W_ADDRESS      = 1,
@@ -358,7 +358,7 @@ monotonic_ns(void)
 }
 
 /* ===========================================================================
- * 4. Tile-descriptor array (PP-CLEAR-FRAME.md section 6.1). Verified opcodes,
+ * 4. Tile-descriptor array (tests/PP-CLEAR-FRAME.md section 6.1). Verified opcodes,
  *    cross-checked against both the 2011-2012 Limare project and the current
  *    Mesa lima Gallium driver, which agree byte-for-byte.
  * ======================================================================== */
@@ -395,7 +395,7 @@ build_tile_array(uint8_t *scratch, uint32_t scratch_va)
 }
 
 /* ===========================================================================
- * 5. Frame construction (PP-CLEAR-FRAME.md sections 4/5).
+ * 5. Frame construction (tests/PP-CLEAR-FRAME.md sections 4/5).
  * ======================================================================== */
 
 static void
@@ -468,7 +468,7 @@ print_gate_message(void)
 	    "One value in this frame is a genuinely UNVERIFIED GUESS, not a\n"
 	    "sourced fact: the per-tile polygon-list scratch memory (the small\n"
 	    "buffers each tile-descriptor entry points into, see\n"
-	    "PP-CLEAR-FRAME.md section 6.2) is left zero-filled. No known\n"
+	    "tests/PP-CLEAR-FRAME.md section 6.2) is left zero-filled. No known\n"
 	    "working driver -- not the 2011-2012 Limare project, not the current\n"
 	    "Mesa lima Gallium driver, not ARM's own GPL Utgard driver -- has\n"
 	    "ever submitted a PP job with no preceding GP job, which is exactly\n"
@@ -607,12 +607,12 @@ main(int argc, char **argv)
 		return 1;
 	}
 	memset(scratch_map, 0, SCRATCH_BO_SIZE);
-	/* render_state block: all zero (PP-CLEAR-FRAME.md section 4.1) --
+	/* render_state block: all zero (tests/PP-CLEAR-FRAME.md section 4.1) --
 	 * already zero from the memset above, nothing more to write. */
 	build_tile_array(scratch_map, scratch_va);
 	/* Per-tile polygon-list scratch (offset SCRATCH_POLY_SCRATCH_OFF..end):
 	 * left zero from the memset above. THIS IS THE UNVERIFIED GUESS --
-	 * see PP-CLEAR-FRAME.md section 6.2 and the gate message above. */
+	 * see tests/PP-CLEAR-FRAME.md section 6.2 and the gate message above. */
 
 	/* -- Build the frame -- */
 	build_pp_frame(&frame, target_va, render_state_va, tile_array_va);
@@ -665,7 +665,7 @@ main(int argc, char **argv)
 	if (wait_ret == -1) {
 		if (errno == ETIMEDOUT || errno == EBUSY) {
 			mark_fail("GEM_WAIT did not signal completion within 3s "
-			    "(signal 1 of PLAN-mesa-lima.md section 1.4 failed -- "
+			    "(signal 1 of docs/PLAN-mesa-lima.md section 1.4 failed -- "
 			    "suspect the IRQ bridge, or a hang on real hardware)");
 		} else {
 			fprintf(stderr, "FATAL: GEM_WAIT failed: %s (errno=%d)\n",
@@ -725,7 +725,7 @@ main(int argc, char **argv)
 		if (mismatches == TARGET_WIDTH * TARGET_HEIGHT && still_sentinel == mismatches) {
 			mark_fail("every pixel is still the sentinel -- the GPU never "
 			    "wrote to the target at all (signal 2 of "
-			    "PLAN-mesa-lima.md section 1.4 failed)");
+			    "docs/PLAN-mesa-lima.md section 1.4 failed)");
 		} else if (mismatches > 0) {
 			mark_fail("target does not hold the expected clear colour -- "
 			    "frame-content bug (the kernel would not have caught this, "
@@ -739,7 +739,7 @@ main(int argc, char **argv)
 	}
 
 	printf("note: this program does not check `sysctl hw.lima_error` "
-	    "(PLAN-mesa-lima.md section 1.4, signal 3) -- that is FreeBSD-"
+	    "(docs/PLAN-mesa-lima.md section 1.4, signal 3) -- that is FreeBSD-"
 	    "specific and outside what a portable ioctl-only test can do; "
 	    "check it by hand after running this.\n");
 

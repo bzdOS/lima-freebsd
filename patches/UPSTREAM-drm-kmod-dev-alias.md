@@ -318,7 +318,7 @@ tree:
 **Not independently re-verified in this pass** (taken from this project's own
 prior records, since board access was explicitly out of scope for this task):
 - The exact hex frame offsets in the fuller backtrace recorded in
-  `hal/lima/patches/README.md` (`make_dev_alias+0x39c`, etc.) — the *function
+  `README.md` (`make_dev_alias+0x39c`, etc.) — the *function
   names and call order* in that trace were checked against the real call
   graph above; the offsets were not.
 - The "three kldload/kldunload cycles, no panic, /dev/dri absent" hardware

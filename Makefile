@@ -70,7 +70,7 @@
 # listed in SRCS below, and sys/conf/kmod.mk generates them into the module
 # objdir from ${SYSDIR} alone. That is how drm-kmod's own drm/Makefile does it.
 # To cross-build for another arch, just set MACHINE/MACHINE_ARCH (or use
-# `make buildenv`); see hal/lima/README-arm64.md for a worked aarch64 example.
+# `make buildenv`); see docs/README-arm64.md for a worked aarch64 example.
 
 KMOD=	lima
 

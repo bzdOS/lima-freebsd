@@ -5,7 +5,7 @@ Host doing the fetching/orchestration: this Linux host (`/opt/bzdos/bsdOS`).
 Baseline free disk on guest at start: **4.6-4.7 GB on `/` (`/dev/vtbd0p3`, 6.0G total)**.
 
 This log is written incrementally, in the order things actually happened, including
-the mistakes. See `FEASIBILITY.md` for the pre-build research this continues, and
+the mistakes. See `mesa-feasibility.md` for the pre-build research this continues, and
 `MALI-STATUS.md` for the kernel-side state this assumes as given.
 
 ## 0. Pre-flight
@@ -65,7 +65,7 @@ Per the task brief, tried the pinned mirror first, then found a better source.
     **387 MB, 12,803 files**, `VERSION` file reads `26.2.0`, no `.git` (as
     expected for a release tarball), `src/gallium/drivers/lima/` present and
     populated, root `meson.build` is 2673 lines / `meson.options` 917 lines —
-    both match the line counts `FEASIBILITY.md` cites, and the exact lines it
+    both match the line counts `mesa-feasibility.md` cites, and the exact lines it
     quotes (line 162 `system_has_kms_drm`, the aarch64-default driver list
     including `'lima'`) are byte-identical in this real tree. `dri3`/`osmesa`
     confirmed absent from `meson.options` (removed options, as the feasibility
@@ -276,7 +276,7 @@ harness's own background-not-kill behavior if it runs long. Outcome below.
 
 While the guest was busy, cross-checked every option this log's planned
 `meson setup` invocation touches against `meson.options` in the **actual
-fetched-and-verified tree** (not just FEASIBILITY.md's git-snapshot reading —
+fetched-and-verified tree** (not just mesa-feasibility.md's git-snapshot reading —
 the two should agree, since a tagged release and its snapshot share the same
 option set, but this closes the gap between "should" and "checked"):
 
@@ -351,7 +351,7 @@ rather than round up:
   - `lima_smoke.c` -- a minimal headless EGL/GLES2 smoke test: opens
     `/dev/dri/renderD128` directly via `gbm`, creates a GBM-platform EGL
     display, binds a GLES2 context on a 4x4 pbuffer, clears to solid red,
-    `glFinish()`s (the real completion-wait path, per FEASIBILITY.md's
+    `glFinish()`s (the real completion-wait path, per mesa-feasibility.md's
     `drmSyncobjWait` callout), reads the pixels back, and checks they are
     uniformly red. Flags a non-uniform result as a possible symptom of the
     known `lima_vm.c:87` cacheable-mapping gap rather than "nothing rendered."
@@ -361,7 +361,7 @@ rather than round up:
   - Guest `/`: `6.0G` total, last confirmed reading **`1.2G` used / `4.3G`
     avail (22%)** -- comfortably above the 1.0 GB floor throughout, and the
     remaining Mesa build (source + objects) was independently estimated at
-    "well under 1 GB more" (`FEASIBILITY.md` §4), leaving margin.
+    "well under 1 GB more" (`mesa-feasibility.md` §4), leaving margin.
   - Host: `/` at 76G free / 930G, `/tmp` (tmpfs) at 6.7G free / 7.8G -- no
     concern.
 - **No forbidden action taken.** No reboot/reset/power/kldload/`/etc` edit/

@@ -975,7 +975,7 @@ int lima_sched_pipe_init(struct lima_sched_pipe *pipe, const char *name)
  * for both pipes, and force-reset each one -- while the hardware itself
  * reported `int_state=0 status=0`, i.e. perfectly idle with nothing in flight.
  * A false alarm that also power-cycled a healthy GPU on every unload, and it
- * masked the branch's real purpose: LOOSE-ENDS.md recorded the timeout path as
+ * masked the branch's real purpose: docs/LOOSE-ENDS.md recorded the timeout path as
  * "has never executed" when in fact it was the only path ever taken.
  *
  * The fence is the honest test: it is signalled exactly when the hardware is

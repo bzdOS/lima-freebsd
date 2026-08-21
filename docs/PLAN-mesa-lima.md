@@ -19,7 +19,7 @@ backed by a read is labelled **ASSUMPTION**.
 
 ## 0. Where this actually sits today
 
-Verified state, from `hal/lima/MALI-STATUS.md` and `hal/lima/README-arm64.md` (both
+Verified state, from `MALI-STATUS.md` and `README-arm64.md` (both
 dated 2026-08-11):
 
 - `lima.ko` attaches on real hardware: Banana Pi M64 (Allwinner A64, Mali-400 MP2
@@ -368,7 +368,7 @@ on the guest.** Rough cost: the file is small, so guest-side compile time is a
 non-issue even on the single vCPU this guest gets (§5.7); the only real cost is
 the push step, which is already a solved, documented pattern. This is a normal
 source-iteration loop, not a live-disk hotpatch, so it does not run into
-`WOW_FEATURES.md`'s rule against patching around systemic bugs on a live image —
+`WOW_FEATURES.md` (bzdk-side, not in this repository)'s rule against patching around systemic bugs on a live image —
 the source of truth stays in the repo either way.
 
 ### 3.3 A future full Mesa build — undecided, and should stay that way until M2 passes
@@ -439,7 +439,7 @@ constraint: no kernel/world builds).
 build runs with `HCR_EL2.IMO=0` — physical IRQs routed **directly to the guest**,
 not to EL2 (`/opt/bzdos/microkernel/PROGRESS.md:100`: "routing all physical
 interrupts directly to the guest... lets the guest handle device interrupts... 
-natively"). `microkernel/README.md`'s "known gaps" section confirms this is
+natively"). `microkernel/README.md` (bzdk-side, not in this repository)'s "known gaps" section confirms this is
 paired with the GIC being otherwise unmediated: *"`HCR_EL2.IMO=0` gives the guest
 unmediated access to the real GICv2"* — stage-2 identity-maps the whole low-1GiB
 MMIO block including the real GIC distributor and CPU interface, with the *only*
@@ -531,7 +531,7 @@ fix before any long-running Mesa client milestone past M4.
 
 ### 5.7 Single vCPU guest
 
-**Mechanism:** `microkernel/CLAUDE.md`'s core layout: "CPU0 — runs the guest,"
+**Mechanism:** `microkernel/CLAUDE.md` (bzdk-side, not in this repository)'s core layout: "CPU0 — runs the guest,"
 with CPU1-3 dedicated to the debug core / eMMC offload / idle
 (`microkernel/CLAUDE.md:65-74`) — the FreeBSD guest gets one physical core.
 **Affects rendering:** low direct risk for M0-M3 (short, single-purpose test
@@ -569,17 +569,17 @@ contention for the completion IRQ, not at the frame content or IRQ bridge.
 
 ## References (all read while writing this document)
 
-`hal/lima/MALI-STATUS.md`, `hal/lima/README-arm64.md`, `hal/lima/drm/lima_drm.h`,
+`MALI-STATUS.md`, `README-arm64.md`, `hal/lima/drm/lima_drm.h`,
 `hal/lima/lima_drv.c`, `hal/lima/lima_gem.c`, `hal/lima/lima_vm.c`,
 `hal/lima/lima_pp.c`, `hal/lima/lima_gp.c` (frame-register cross-check only),
 `hal/lima/lima_device.c`, `hal/lima/lima_regs.h`, `hal/lima/lima_ccu_debug.c`,
 `hal/lima/linux/interrupt.h`, `hal/lima/drm/drm_gem_shmem_helper.c`,
 `hal/lima/Makefile`, `hal/lima/tests/test_lima_math.c`,
-`docs/specs/SPEC_lima_freebsd.md`,
+`docs/specs/SPEC_lima_freebsd.md` (bzdk-side, not in this repository),
 `infra/scripts/build-lima-arm64.sh`, `infra/scripts/build-drm-kmod-arm64.sh`,
-`DESIGN-gpu-display-a64.md`, `PLAN-gpu-bringup.md`, `ROADMAP.md`, `CLAUDE.md`
-(bsdOS root); `/opt/bzdos/microkernel/CLAUDE.md`, `PROGRESS.md`, `README.md`,
-`WOW_FEATURES.md`, `stage2.h`, `stage2.c`; the deployed
+`DESIGN-gpu-display-a64.md` (bzdk-side, not in this repository), `PLAN-gpu-bringup.md` (bzdk-side, not in this repository), `ROADMAP.md` (bzdk-side, not in this repository), `CLAUDE.md` (bzdk-side, not in this repository)
+(bsdOS root); `/opt/bzdos/microkernel/CLAUDE.md`, `PROGRESS.md` (bzdk-side, not in this repository), `README.md`,
+`WOW_FEATURES.md` (bzdk-side, not in this repository), `stage2.h`, `stage2.c`; the deployed
 `/opt/bzdos/tftpboot/bananapi-min.dtb` and its source `build/bananapi-min.dts`
 (read directly with `fdtget`/`dtc`, not assumed); FreeBSD's
 `graphics/mesa-dri/Makefile` (`cgit.freebsd.org`).

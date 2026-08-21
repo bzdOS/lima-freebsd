@@ -35,7 +35,7 @@ panel vblank. See `MALI-STATUS.md` for the numbers and how each was taken.
 Attach needed an opt-in `kenv hw.lima.force_pll_gpu=1` stopgap for the first few
 hours. The guest kernel has since been rebuilt with the real clk(9) fix
 (`AW_CLK_HAS_GATE` on `ccu_a64.c`'s `pll_gpu_clk`, see
-`tftpboot/rebuild-2026-08-11/README.md`) and attach now works with that tunable
+`tftpboot/rebuild-2026-08-11/README.md` (bzdk-side, not in this repository)) and attach now works with that tunable
 unset. The build-status measurements below are unchanged and still accurate.
 
 ```
@@ -238,7 +238,7 @@ would never be clocked, reset-deasserted or powered — the driver would attach
 
 ## Verdict on the spec's 6–12 month estimate
 
-`docs/specs/SPEC_lima_freebsd.md` costed Phase B as ~5 kLOC and 6–12 months.
+`docs/specs/SPEC_lima_freebsd.md` (bzdk-side, not in this repository) costed Phase B as ~5 kLOC and 6–12 months.
 What is measurable now:
 
 - The ~5.3 kLOC lima port itself is **further along than the spec implies** — it
@@ -260,7 +260,7 @@ recalibrates the rest: blockers 2 and 3 together are 650–1150 LOC of comparabl
 infrastructure work — weeks, not months. The 6–12 months belongs almost entirely
 to what comes after them: first `kldload`, first attach, and validating on real
 silicon everything that was written blind. See the re-cost table in
-`docs/specs/SPEC_lima_freebsd.md`.
+`docs/specs/SPEC_lima_freebsd.md` (bzdk-side, not in this repository).
 
 ## The `sysctl___hw_dri` blocker — ROOT-CAUSED AND FIXED (2026-08-07)
 

@@ -173,7 +173,7 @@ physical address space as its upper bound.
 
 **Unproven / mitigating.** Unobservable on this board: the guest has 1 GiB of
 DRAM, so no page can be above 4 GiB. For bzkms specifically EL2 validates the
-extent before reprogramming DE2, and commit `afe2591`/`README-zerocopy.md` record
+extent before reprogramming DE2, and commit `afe2591`/`README-zerocopy.md` (bzdk-side, not in this repository) record
 153471 accepted addresses with zero rejected — so a truncated address would
 surface as an EL2 rejection (black screen) rather than as scanout of the wrong
 memory. Neither mitigation is a guarantee, and neither produces a guest-side
@@ -282,9 +282,9 @@ This is not a cosmetic staleness — the load-bearing verdicts are inverted.
 |---|---|---|
 | `MALI-STATUS.md` | `bbb7a86`, 2026-08-11 23:33 | `:36` "Still no GPU *job* has run."; `:139` heading "The GPU's interrupts are registered and have never fired"; `:161-163` "Nothing has *rendered* yet ... no Mesa/lima userland is present" |
 | `PLAN-mesa-lima.md` | `2198572`, 2026-08-11 20:45 | `:25-27` "**Nothing has rendered.** ... no Mesa/lima userland exists anywhere in this project"; `:288-299` "Mesa is not a realistic near-term milestone" |
-| `SCANOUT-IMPORT.md` | `c5885a0`, 2026-08-11 23:52 | `:10-13` recommends the import route that was later measured not to work; `:30-34` "The single largest blocker is **not guest-side at all**" (the shipped design never needed that window); `:194-210` quotes `lima_l2_cache_flush()` as `{ return 0; }` |
-| `mesa/FEASIBILITY.md` | **never committed** | `:14-18` "**nobody has ever done it**"; `:250-267` "blocked on a missing userspace sysroot" |
-| `mesa/BUILD-LOG.md` | `44f0677`, 2026-08-12 | `:306` heading "Final status ... dependency staging still in flight, build not started"; the file never records the outcome it exists to record |
+| `SCANOUT-IMPORT.md` (bzdk-side, not in this repository) | `c5885a0`, 2026-08-11 23:52 | `:10-13` recommends the import route that was later measured not to work; `:30-34` "The single largest blocker is **not guest-side at all**" (the shipped design never needed that window); `:194-210` quotes `lima_l2_cache_flush()` as `{ return 0; }` |
+| `mesa-feasibility.md` | **never committed** | `:14-18` "**nobody has ever done it**"; `:250-267` "blocked on a missing userspace sysroot" |
+| `mesa-build-log.md` | `44f0677`, 2026-08-12 | `:306` heading "Final status ... dependency staging still in flight, build not started"; the file never records the outcome it exists to record |
 | `drm/PURGE-NOTES.md` | `92315d4`, 2026-08-11 | `:15-16` "**Nothing here has run on hardware, or in a kernel build.**" — contradicted by the same directory's `drm_gem_shmem_helper.c:130` "measured on hardware 2026-08-20" |
 | `tests/README.md` | `9f4088f`, 2026-08-19 | `:3-5` "this board has no FreeBSD display driver" — `hal/bzfb` and `hal/bzkms` both exist and work |
 
@@ -319,7 +319,7 @@ headline sentences listed above, and `git add hal/lima/mesa/FEASIBILITY.md`
 header contradiction is a two-line edit.
 
 **Extraction.** Yes, weakly — the docs are the deliverable's explanation of
-itself. `SCANOUT-IMPORT.md` and `hvfb/` do not travel at all (item 12).
+itself. `SCANOUT-IMPORT.md` (bzdk-side, not in this repository) and `hvfb/` do not travel at all (item 12).
 
 ---
 
@@ -402,7 +402,7 @@ parity: Linux 6.12's `lima_vm.c:71` is the same unconditional
 importantly, the failure mode the note predicts — stale pixels in a scanned-out
 buffer — has been actively looked for and not found: EL2 scanned the presented
 buffer from outside the guest and found the fragment shader's own colours in 20 of
-35 sample points (`bzfb/tests/README-zerocopy.md`, commit `ae6b548`), and
+35 sample points (`bzfb/tests/README-zerocopy.md` (bzdk-side, not in this repository), commit `ae6b548`), and
 `limabench` reports pixel-exact results 4/4 runs. So the risk is theoretical
 today, and the real flush (`lima_l2_cache.c`, since `c5885a0`) is what makes it
 so.
@@ -533,14 +533,14 @@ port of Mesa does not enable the lima gallium driver.
 > FBO, cleared, then `glReadPixels`. It completes with `0 of 16384 pixels wrong`
 > on three consecutive runs, after which `limabench` still passes and
 > `kldunload lima` still takes 0.06 s. The warning in
-> `bzfb/tests/README-zerocopy.md` has been retracted there with the evidence.
+> `bzfb/tests/README-zerocopy.md` (bzdk-side, not in this repository) has been retracted there with the evidence.
 > **This item is closed.**
 
 **Claim.** A single ordinary GL call from unprivileged userspace puts the GPU in a
 state that survives `kldunload` of both lima and bzfb and needs a guest reboot.
 Nothing guards it.
 
-**Evidence.** `bzfb/tests/README-zerocopy.md` "Do not do this": "`glReadPixels`
+**Evidence.** `bzfb/tests/README-zerocopy.md` (bzdk-side, not in this repository) "Do not do this": "`glReadPixels`
 on an FBO whose colour attachment is an imported dma-buf **hangs the GPU on the
 first frame**, and the wedged state survives `kldunload` of lima and bzfb — only a
 guest reboot clears it." Same document records that this was found while trying to
@@ -642,7 +642,7 @@ status in a comment until it has.
 > series (`freebsd-linuxkpi-01-dma-map-sg-multipage.patch`, then
 > `-02-dma-alloc-coherent-memattr.patch` — verified to reproduce the committed
 > tree byte-for-byte when applied in that order) and written up in
-> `UPSTREAM-freebsd-linuxkpi-dma.md`.
+> `../patches/UPSTREAM-freebsd-linuxkpi-dma.md`.
 >
 > Four fixes carry their reasoning as a header comment inside the patch file
 > rather than a separate `UPSTREAM-*.md`. That is deliberate, not a gap: a
@@ -694,12 +694,12 @@ name the upstream revisions that contain them.
 
 ---
 
-## 12. `hvfb/` is dead code, and `SCANOUT-IMPORT.md` documents a route that was measured not to work
+## 12. `hvfb/` is dead code, and `SCANOUT-IMPORT.md` (bzdk-side, not in this repository) documents a route that was measured not to work
 
 > **RESOLVED 2026-08-21.** The boundary is now visible in the tree rather than
-> only in prose: both artefacts moved to `bzdos/` (with a `bzdos/README.md`
+> only in prose: both artefacts moved to `bzdos/` (with a `bzdos/README.md` (bzdk-side, not in this repository)
 > saying why they are kept and that nothing depends on them), and
-> `bzdos/SCANOUT-IMPORT.md` carries a status note at its head stating that its
+> `bzdos/SCANOUT-IMPORT.md` (bzdk-side, not in this repository) carries a status note at its head stating that its
 > recommended route was measured not to work and that its geometry arithmetic is
 > stale. New `EXTRACTION.md` is the manifest this item asked for: a TRAVELS list,
 > a DOES NOT TRAVEL list, the judgement call about `lima_ccu_debug.c` spelled
@@ -719,8 +719,8 @@ them is also dead.
   literally true. Its function was taken over by `hal/bzfb` (commit `08e8a07`
   onward) and then `hal/bzkms` (`d7c6653`). It carries 9 of the port's 10 `bzdOS`
   source references.
-- `SCANOUT-IMPORT.md` (48982 bytes) recommends at `:10-13` the import route that
-  `bzfb/tests/README-zerocopy.md` later measured as writing the imported dma-buf
+- `SCANOUT-IMPORT.md` (bzdk-side, not in this repository) (48982 bytes) recommends at `:10-13` the import route that
+  `bzfb/tests/README-zerocopy.md` (bzdk-side, not in this repository) later measured as writing the imported dma-buf
   exactly once and never again, at ~400 fps, after eliminating nine hypotheses one
   by one. Its geometry arithmetic at `:338-345` is for `HDMI_FB_BASE 0x4D000000`,
   1280 wide, stride 5120; the live window is 1120x276 stride 4480 at
@@ -741,7 +741,7 @@ that git history preserves it adequately.
 
 **Next step.** Add an `EXTRACTION.md` (or a section in `README-arm64.md`) with two
 lists: TRAVELS (`lima_*.c/h`, `drm/`, `linux/`, `Makefile`, `patches/`, `tests/`
-minus the pre-Mesa ones) and DOES NOT TRAVEL (`hvfb/`, `SCANOUT-IMPORT.md`,
+minus the pre-Mesa ones) and DOES NOT TRAVEL (`hvfb/`, `SCANOUT-IMPORT.md` (bzdk-side, not in this repository),
 `lima_ccu_debug.c` — Allwinner-CCU debug scaffolding — and the `bzdOS` comment
 references, which should be reworded rather than deleted since they explain real
 findings). Then delete `hvfb/` or move it under a `bzdos/` subdirectory so the
@@ -762,7 +762,7 @@ boundary is visible in the tree rather than only in prose.
 > `bzfb/`'s template and the three generated headers added to
 > `lima/.gitignore` (`bus_if.h` needed an exact-line check — it is a substring
 > of the `ofw_bus_if.h` already there, which is how it had been missed);
-> `mesa/FEASIBILITY.md` is tracked; `contigfree(9)` replaced by `free()` with
+> `mesa-feasibility.md` is tracked; `contigfree(9)` replaced by `free()` with
 > the deprecation quoted; **"PinePhone Pro" corrected in all 11 places** (it is
 > RK3399/Mali-T860 — a different GPU family — while this is a Banana Pi M64,
 > A64/Mali-400 MP2; `lima_pmu.c`'s existing explanation of the error is kept
@@ -803,7 +803,7 @@ boundary is visible in the tree rather than only in prose.
   in `git status`. `bzfb/.gitignore` is the template. `lima/.gitignore` is missing
   `device_if.h`, `bus_if.h`, `pci_if.h` for the same reason — those three appear
   as `??` today.
-- **`mesa/FEASIBILITY.md` is untracked** (35223 bytes, never committed). Either
+- **`mesa-feasibility.md` is untracked** (35223 bytes, never committed). Either
   commit it or delete it; leaving 35 KB of superseded analysis outside git is the
   worst of both.
 - **`contigfree(9)` is deprecated.** `bzkms.c:421`; the declaration in
@@ -842,7 +842,7 @@ boundary is visible in the tree rather than only in prose.
   from `drm/PURGE-NOTES.md`. Add it as deviation #5 — an extraction reviewer will
   ask why it is there.
 - **`tests/README.md` documents 2 of 8 files.** Undocumented:
-  `lima_ioctl_smoke.c`, `lima_pp_clear.c`, `PP-CLEAR-FRAME.md` (all pre-Mesa, no
+  `lima_ioctl_smoke.c`, `lima_pp_clear.c`, `../tests/PP-CLEAR-FRAME.md` (all pre-Mesa, no
   recorded run since 2026-08-11), `test_lima_math.c` and `test_shmem_logic.c`
   (host-side unit tests, reachable only via `Makefile:190-194`
   `gmake test-layout` / `test-shmem`, which the README never mentions). The GL and
@@ -861,7 +861,7 @@ Recorded so the next person does not spend a day on them.
 
 - **The L2 flush timeout itself.** Looks alarming in `dmesg`
   (`lima_platform_driver0: l2 cache flush timed out`) and is listed as "Still
-  open" in `bzfb/tests/README-zerocopy.md`. It was the *deadline*, not the
+  open" in `bzfb/tests/README-zerocopy.md` (bzdk-side, not in this repository). It was the *deadline*, not the
   hardware: LinuxKPI's `ktime_get()` is the coarse clock, so upstream's 1000 us
   never meant 1000 us. 41 occurrences in six hours became 0 with a 20 ms bound
   (`lima_l2_cache.c:101`, commit `afe2591`). The L2 register base was verified
@@ -869,7 +869,7 @@ Recorded so the next person does not spend a day on them.
   geometry through the same `iomem`. What remains open is only the ignored return
   value (item 6), not the timeout.
 - **The contiguous BO path does not leak.** Measured around the module rather than
-  the workload (`bzfb/tests/README-zerocopy.md`, commit `a641ad7`): no modules
+  the workload (`bzfb/tests/README-zerocopy.md` (bzdk-side, not in this repository), commit `a641ad7`): no modules
   128744 wired pages; loading both +449; one presenting run +1745; unloading both
   returns all 2190, net **+4**; six further runs add 53. An earlier commit
   (`95200e6`) claimed a leak and `95a672d` retracted it. Do not re-open this
@@ -893,7 +893,7 @@ Recorded so the next person does not spend a day on them.
   (`Makefile:81-110`) exist for the day drm-kmod exports them.
 - **"lima writes an imported dma-buf exactly once."** Fully characterised, nine
   hypotheses eliminated one at a time by experiment
-  (`bzfb/tests/README-zerocopy.md`), and then routed around: the working answer is
+  (`bzfb/tests/README-zerocopy.md` (bzdk-side, not in this repository)), and then routed around: the working answer is
   that lima allocates the buffer (`gbm_surface`) and the display is repointed at
   it, not the reverse. This is not a bug waiting to be fixed; it is a closed
   investigation with a shipped alternative. Read the table before re-deriving it.

@@ -66,7 +66,7 @@ DRM driver to FreeBSD, they are probably what you need first.
 | `linux/platform_device.{c,h}` | newbus/FDT ↔ LinuxKPI platform_device bridge |
 | `linux/{clk,reset,interrupt}.h`, `linux/regulator/consumer.h` | local shims for the LinuxKPI headers that are stubs |
 | `patches/` | fixes required in FreeBSD, drm-kmod and ports — see below, and `patches/UPSTREAM-INDEX.md` |
-| `EXTRACTION.md` | what travels and what does not, and why — read this before reusing any of it |
+| `docs/EXTRACTION.md` | what travels and what does not, and why — read this before reusing any of it |
 | `tests/` | `limabench` (the real workload), `limatri` (one triangle), ioctl smoke tests, host-side unit tests |
 | `mesa/` | notes on cross-building Mesa 26.2 with the lima gallium driver for FreeBSD/arm64 |
 
@@ -155,7 +155,7 @@ job submission, the tile-list heap (growable heap BOs), L2 cache maintenance,
 GEM/PRIME import and export, and Mesa's lima driver on top. `limabench` passes
 4/4 with textures, 2420 draws, depth and blending, zero MMU faults.
 
-**Known open items** are enumerated with evidence in `LOOSE-ENDS.md` (added
+**Known open items** are enumerated with evidence in `docs/LOOSE-ENDS.md` (added
 alongside this README). The three worth knowing before you build on it:
 
 - `lima_vm.c` maps **every** BO `LIMA_VM_FLAGS_CACHE`; `LIMA_VM_FLAGS_UNCACHE`
@@ -223,7 +223,7 @@ install, in rising order of effort:
   and they are useful to every other SoC DRM driver anyone tries to port next —
   which is a better argument for taking them than lima itself.
 
-If you only want to read something: `LOOSE-ENDS.md` is the register of what is
+If you only want to read something: `docs/LOOSE-ENDS.md` is the register of what is
 still wrong, and the `patches/UPSTREAM-*.md` write-ups each trace one bug from
 symptom to root cause on real hardware.
 
@@ -241,7 +241,7 @@ Nothing in the code depends on that hypervisor. Every reference to it is a
 comment; the driver builds and runs on bare-metal FreeBSD/arm64 with the patches
 above. The parts that genuinely were hypervisor-specific — a scanout-import path
 and a hypervisor-framebuffer shim — are deliberately **not** in this repository.
-See `EXTRACTION.md` for the exact boundary.
+See `docs/EXTRACTION.md` for the exact boundary.
 
 ### The three projects, and which is which
 

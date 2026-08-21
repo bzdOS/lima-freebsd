@@ -2,7 +2,7 @@
  * lima_ioctl_smoke.c -- Tier 0 ioctl-plumbing smoke test for the lima DRM
  * driver (Mali-400 MP2, Banana Pi M64 / FreeBSD 15.1 guest).
  *
- * Implements the exact sequence from PLAN-mesa-lima.md sec1.2 ("Tier 0 --
+ * Implements the exact sequence from docs/PLAN-mesa-lima.md sec1.2 ("Tier 0 --
  * prove the ioctl plumbing, touch zero GPU hardware state"):
  *
  *   open("/dev/dri/renderD128", O_RDWR)
@@ -24,7 +24,7 @@
  * (lima_heap_alloc() is a stub, hal/lima/lima_gem.c:28-37).  Never send that
  * flag in the main sequence above.
  *
- * This never programs a single GP/PP/MMU register (PLAN-mesa-lima.md
+ * This never programs a single GP/PP/MMU register (docs/PLAN-mesa-lima.md
  * sec1.2): a failure here means the bug is in ioctl plumbing, GEM, VM
  * (per-file page tables / ctx-mgr), or drm_gem_shmem_helper.c's mmap /
  * page-fault path -- not in a Mali command stream.  See tests/README.md for
@@ -42,7 +42,7 @@
  *
  * Deliberately NOT mirrored here: GEM_SUBMIT, GEM_WAIT, and the GP/PP frame
  * structs (lima_drm.h:51-101).  Tier 0 never calls them -- see
- * PLAN-mesa-lima.md sec1.3 (Tier 1) for the job that will need them.
+ * docs/PLAN-mesa-lima.md sec1.3 (Tier 1) for the job that will need them.
  *
  * Build (on the FreeBSD guest, using its own native cc -- see
  * tests/README.md for why this must not be cross-compiled):
@@ -321,7 +321,7 @@ fault_handler(int signum)
  *     attach time.
  *   - This board's attach banner already printed "gp - mali400 version
  *     major 1 minor 1" / "pp0 - mali400 version major 1 minor 1" / "pp1 -
- *     mali400 version major 1 minor 1" (hal/lima/MALI-STATUS.md:9-11) --
+ *     mali400 version major 1 minor 1" (docs/MALI-STATUS.md:9-11) --
  *     that is what fixes major=1, minor=1 as the expected values below,
  *     not a guess, and it is a hardware-identity register (Mali-400 r1p1's
  *     core revision), stable regardless of clock/PLL configuration.
@@ -392,7 +392,7 @@ main(int argc, char **argv)
 
     setvbuf(stdout, NULL, _IOLBF, 0);
 
-    printf("=== lima_ioctl_smoke: Tier 0 ioctl-plumbing test (PLAN-mesa-lima.md sec1.2) ===\n");
+    printf("=== lima_ioctl_smoke: Tier 0 ioctl-plumbing test (docs/PLAN-mesa-lima.md sec1.2) ===\n");
     printf("device: %s\n", devpath);
 
     /* ---- [1] open ------------------------------------------------------ */
@@ -606,7 +606,7 @@ main(int argc, char **argv)
              * broken, the FIRST access below can SIGBUS/SIGSEGV rather
              * than return an errno. Catching that here turns a silent
              * process-killed-by-signal (no summary line at all -- see
-             * PLAN-mesa-lima.md sec1.2, "if this hangs or crashes") into an
+             * docs/PLAN-mesa-lima.md sec1.2, "if this hangs or crashes") into an
              * attributed FAIL with a one-line summary still printed.
              */
             memset(&sa, 0, sizeof sa);

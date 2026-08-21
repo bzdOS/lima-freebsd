@@ -42,7 +42,7 @@ in the tree instead of only in prose:
 | What | Why |
 |---|---|
 | `bzdos/hvfb/` | 24 KB of never-compiled code (`lima_hvfb.c`, its uapi header, its Makefile). It was the first attempt at handing a rendered buffer to the hypervisor's scanout; `hal/bzfb` took the job over, then `hal/bzkms`. Nothing outside the directory references it. Kept rather than deleted because it is the only written record of that first design — but it is not a dependency of anything. |
-| `bzdos/SCANOUT-IMPORT.md` | 49 KB arguing for an import route that was later **measured not to work** (it wrote the imported dma-buf exactly once, at ~400 fps of nothing changing). Its geometry arithmetic is stale too. Kept for its findings; see the status note at its head. |
+| `bzdos/SCANOUT-IMPORT.md` (bzdk-side, not in this repository) | 49 KB arguing for an import route that was later **measured not to work** (it wrote the imported dma-buf exactly once, at ~400 fps of nothing changing). Its geometry arithmetic is stale too. Kept for its findings; see the status note at its head. |
 
 Also outside this directory and outside the port: `hal/bzfb` (the hypervisor
 framebuffer/doorbell device) and `hal/bzkms` (the DRM/KMS device whose page flip

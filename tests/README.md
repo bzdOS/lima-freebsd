@@ -16,7 +16,7 @@ below are unaffected and still the right first thing to run, because they answer
 | `limatri.c` | the GPU executes a job at all: one clear (PP), one untextured triangle (GP builds a tile list, PP rasterises), 64x64. The first-frame milestone. |
 | `limabench.c` | that GL actually works: a sampled texture, 2420 draw calls per run, depth testing, alpha blending, 512x512 with a depth buffer, over 10 frames. |
 | `lima_ioctl_smoke.c` | that the ioctl surface answers at all — GET_PARAM / GEM_CREATE / GEM_INFO round-trips, before any GL is involved. Pre-Mesa; no recorded run since 2026-08-11. |
-| `lima_pp_clear.c` | the PP alone clearing a buffer, hand-built job descriptors, no GP and no Mesa. Written before Mesa existed here, kept because it is the smallest thing that can prove the PP runs. See `PP-CLEAR-FRAME.md` for the frame layout it constructs. |
+| `lima_pp_clear.c` | the PP alone clearing a buffer, hand-built job descriptors, no GP and no Mesa. Written before Mesa existed here, kept because it is the smallest thing that can prove the PP runs. See `tests/PP-CLEAR-FRAME.md` for the frame layout it constructs. |
 
 **Host-side unit tests — no board, no GPU.** These run on the build host and are
 the only tests here that can be run in a loop while iterating:

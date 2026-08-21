@@ -204,7 +204,7 @@ this exact gap, and — checked explicitly, this is not incidental — every
 **The omission is not limited to these two files.** A separate, more
 exhaustive audit of every `ccu_*.c`/`aw_clk_*.c` file under
 `sys/dev/clk/allwinner/` in this same tree
-(`hal/lima/patches/freebsd-allwinner-clk-gate-audit.md` in this repository)
+(`freebsd-allwinner-clk-gate-audit.md` in this repository)
 found the identical pattern in a third file, `ccu_a31.c`: six more `FRAC_CLK`s
 missing `AW_CLK_HAS_GATE`, including A31's own `pll_gpu_clk`
 (`ccu_a31.c:381-391`) — the A31 also ships a real Mali-400MP2. I spot-checked
@@ -294,7 +294,7 @@ watchdog reset.
 **Confirmation, not just a consistent story:** setting bit 31 of `PLL_GPU_CTRL`
 by hand locks the PLL in ~230 µs (23 polls) and the identical driver load then
 attaches cleanly on the same board — recorded the same day as this report in
-this project's own status notes (`hal/lima/MALI-STATUS.md`, "RESOLVED: the GPU
+this project's own status notes (`../docs/MALI-STATUS.md`, "RESOLVED: the GPU
 is up"), including a full successful Mali-400 MP2 r1p1 attach
 (`[drm] Initialized lima 1.1.0 20191231 for lima_platform_driver0 on minor 0`)
 gated behind an opt-in `kenv hw.lima.force_pll_gpu=1` workaround pending the
