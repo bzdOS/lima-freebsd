@@ -247,8 +247,10 @@ See `docs/EXTRACTION.md` for the exact boundary.
 
 The names are easy to confuse, so plainly:
 
-- **bzdk** — the EL2 hypervisor above. **This** is what the Mali work ran under.
-  Not public.
+- **bzdk** — <https://github.com/bzdOS/bzdk> — the EL2 hypervisor above.
+  **This** is what the Mali work ran under, and it is where every "measured from
+  outside the guest" number in this repository comes from: the screenshot at the
+  top of this file was taken by it, while the guest was running.
 - **bzdOS** — the operating system: a privacy-first FreeBSD-based OS for ARM64,
   with jailed apps, a Zenoh mesh and zero-copy Wayland streaming.
   <https://github.com/bzdOS/bsdos>. A different project from bzdk; this driver is
