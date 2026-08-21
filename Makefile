@@ -60,7 +60,8 @@
 #   cd .../hal/lima && su -m root -c "make"
 #   kldload drm.ko && kldload ./lima.ko && dmesg | grep lima
 #
-# Target: FreeBSD 15.1 aarch64, Banana Pi M64 (Allwinner A64, Mali-400 MP2)
+# Target: FreeBSD 15.1 aarch64, Allwinner A64 (Mali-400 MP2) — PinePhone and
+# Banana Pi M64. Developed and tested on the Banana Pi M64.
 #
 # This Makefile is arch-neutral: nothing here names amd64 or aarch64. It used to
 # hardcode KOBJ_DIR=/usr/obj/.../amd64.amd64/sys/BSDOS-SQUIRREL-amd64, which both

@@ -41,7 +41,8 @@
  *              DRM scheduler resources on lima_pp_pipe_init.
  *
  * Target:    FreeBSD 15.1 aarch64, drm-66-kmod LinuxKPI layer.
- *            Tested hardware: Allwinner A64 Mali-400 MP2 (Banana Pi M64).
+ *            Supported: Allwinner A64 Mali-400 MP2 — PinePhone and Banana
+ *            Pi M64. Tested on the latter.
  *            MMIO base 0x01C40000, size 0x10000 (see hal/mali_uio.h).
  */
 
