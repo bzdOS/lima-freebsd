@@ -37,7 +37,7 @@
  * display controller, uncached mapping is likely the right answer rather than
  * relying on a flush. Changing that signature touches the path every ordinary
  * buffer uses, so it is deliberately left alone here and documented in
- * `SCANOUT-IMPORT.md`.
+ * `SCANOUT-IMPORT.md` (bzdk-side, not in this repository).
  */
 
 #include <linux/device.h>

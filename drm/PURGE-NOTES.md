@@ -359,7 +359,7 @@ the same function.
   purgeable-predicate tests in `hal/lima/tests/test_shmem_logic.c` (which test
   the pure `drm_gem_shmem_purgeable()`/`_madvise_apply()` logic functions in
   `drm_gem_shmem_logic.h`, not `drm_gem_shmem_purge()` itself), and mentions in
-  `PLAN-mesa-lima.md` and `README-arm64.md` describing the same gap this
+  `docs/PLAN-mesa-lima.md` and `docs/README-arm64.md` describing the same gap this
   document is about.
 - Lima's own ported driver (`hal/lima/lima_gem.c`, `lima_drv.c`) never
   mentions `purge`, `madvise`, or `shrinker`.
@@ -378,7 +378,7 @@ ioctl, no shrinker, no code path anywhere in this tree reaches
 `drm_gem_shmem_purge()` at runtime. That does not make the fix pointless
 (this is exactly the kind of correctness gap that should be closed before,
 not after, someone adds a madvise ioctl or a shrinker for Lima — both are
-plausible future work per `PLAN-mesa-lima.md`), but it does mean nothing
+plausible future work per `docs/PLAN-mesa-lima.md`), but it does mean nothing
 observable on this platform changes today, and it is why this was a
 same-day, non-urgent, doc-plus-fix task rather than a hotfix.
 

@@ -1,6 +1,6 @@
-# PP-CLEAR-FRAME.md — a minimal Mali-400 PP "clear only, no geometry" job
+# tests/PP-CLEAR-FRAME.md — a minimal Mali-400 PP "clear only, no geometry" job
 
-**Written:** 2026-08-11. Answers the gap `PLAN-mesa-lima.md` §1.3 flagged explicitly:
+**Written:** 2026-08-11. Answers the gap `docs/PLAN-mesa-lima.md` §1.3 flagged explicitly:
 *"Getting the actual bytes of that tile-command list right is real Utgard-format
 work — I have not derived or verified exact opcode values here."* This document
 derives them, states exactly where each value comes from, and states plainly the
@@ -54,11 +54,11 @@ Per the task's instruction to report routes tried:
 - **`gitlab.freedesktop.org` — blocked.** Every attempt (direct `WebFetch`, and a
   direct `curl` from this sandbox) hits GitLab's Anubis anti-bot challenge or a
   connection-level failure. Confirmed again this session, matching what
-  `PLAN-mesa-lima.md` §2.1/§6 already reported.
+  `docs/PLAN-mesa-lima.md` §2.1/§6 already reported.
 - **`cgit.freedesktop.org` — also blocked**, but differently: `curl` gets a
   TLS-level `unexpected eof while reading` (connection dropped during the
   handshake), not an HTTP error. Tried fresh this session; not previously tried
-  in `PLAN-mesa-lima.md`.
+  in `docs/PLAN-mesa-lima.md`.
 - **GitHub mirrors — worked, for everything.** `raw.githubusercontent.com` and
   `api.github.com` (for directory listings via the git-trees/contents API) were
   reachable by plain `curl` from this sandbox with no proxy tricks needed. Used:
@@ -226,7 +226,7 @@ reasoning is spelled out rather than just asserted.
 
 ## 6. The tile-descriptor array (`plbu_array_address` target) — what "no primitives" actually means
 
-This is the part `PLAN-mesa-lima.md` flagged as not derived. It is now derived,
+This is the part `docs/PLAN-mesa-lima.md` flagged as not derived. It is now derived,
 with an important scope correction.
 
 ### 6.1 The array format itself — verified, not guessed
@@ -295,7 +295,7 @@ it's produced by real GP hardware executing a real (if trivial) command list,
 not by anything zero-filled in advance by software.
 
 **Net effect on this document's actual deliverable (a PP-only submission, per
-`PLAN-mesa-lima.md` §1.3's own choice to skip the GP):** the tile-descriptor
+`docs/PLAN-mesa-lima.md` §1.3's own choice to skip the GP):** the tile-descriptor
 *array* is exact and sourced; the *content it points into* is the one place this
 document, `lima_pp_clear.c`, and — as far as could be established — every
 existing open-source Mali-400 driver, have nothing to say. Zero-filling that
@@ -311,7 +311,7 @@ path would be to submit that same trivial GP job first (6-word `drm_lima_gp_fram
 would remove the **[X]** entirely by exactly reproducing what a real, working
 driver does, at the cost of one more small BO (a GP tile-heap) and one more
 ioctl round-trip. That is a real, buildable alternative; it is not what was
-asked for here (`PLAN-mesa-lima.md` §1.3 explicitly chose PP-only), so it is
+asked for here (`docs/PLAN-mesa-lima.md` §1.3 explicitly chose PP-only), so it is
 recorded as a finding for the plan's owner, not implemented.
 
 ## 7. What the kernel validates — plainly, and the hang risk that follows
@@ -341,7 +341,7 @@ combination that makes the write-back unit compute an out-of-bounds address, or 
 per §6.2 — a per-tile polygon-list region that the PP's tile-traversal logic
 does not actually treat as "empty" the way this document assumes, all go
 straight to real Mali-400 silicon with nothing in software positioned to catch
-them first. `PLAN-mesa-lima.md` §5.4 argues the *most likely* outcome of a bad
+them first. `docs/PLAN-mesa-lima.md` §5.4 argues the *most likely* outcome of a bad
 frame is a bounded, reported failure (job timeout + the existing
 hang-detection IRQs + scheduler recovery + `hw.lima_error`), not a board-wide
 stall of the EHCI-storm kind this project has already lost hours to — but that
@@ -354,7 +354,7 @@ run without an explicit, informed flag (§9 of that file's own design).
 
 Two BOs, both allocated via plain `GEM_CREATE` (no `LIMA_BO_FLAG_HEAP` — that
 path is stubbed to `-ENOSYS`, **[K]** `hal/lima/lima_gem.c:28-37`, already noted
-in `PLAN-mesa-lima.md` §1.2).
+in `docs/PLAN-mesa-lima.md` §1.2).
 
 ### 8.1 Render target BO — 16384 bytes (64×64×4)
 
@@ -403,7 +403,7 @@ straight into `frame[0]` with no shift at all.
 
 ### 8.3 Why `num_pp = 1`, not `2`
 
-`GET_PARAM(NUM_PP)` on this board reports `2` (`MALI-STATUS.md`, `pp0`+`pp1`
+`GET_PARAM(NUM_PP)` on this board reports `2` (`docs/MALI-STATUS.md`, `pp0`+`pp1`
 both attach). `lima_pp_task_validate` accepts any `num_pp` from `1` up to that
 count (§7). Using `num_pp=2` would require splitting the 16 tiles across two
 separate tile-descriptor arrays — **[M]** `lima_generate_pp_stream()` does this
@@ -423,7 +423,7 @@ core simply never receives a `START_RENDERING` write (`hal/lima/lima_pp.c:
 | Verified name/position, but two sources disagree on value and Mesa (current) was preferred | 4 frame words (10, 11, 16→ resolved fully, 17 partially, 21 partially) | called out individually in §4 |
 | Structure verified from 2 independent hardware-tested drivers; **content is an unverified guess** | 1 region: the per-tile polygon-list scratch, §6.2 | the one real **[X]** |
 
-That is a much smaller gap than `PLAN-mesa-lima.md` §1.3/§6 had reason to expect
+That is a much smaller gap than `docs/PLAN-mesa-lima.md` §1.3/§6 had reason to expect
 going in, and it is a *different, more specific* gap than "the opcodes are
 unknown" — the opcodes are known; what a from-scratch, GP-skipped submission
 does to hardware that no existing driver has ever fed that exact input is not.
@@ -434,6 +434,6 @@ does to hardware that no existing driver has ever fed that exact input is not.
 `hal/lima/lima_pp.h`, `hal/lima/lima_drv.c`, `hal/lima/lima_gem.c`,
 `hal/lima/lima_gem.h`, `hal/lima/lima_vm.c`, `hal/lima/lima_vm.h`,
 `hal/lima/lima_sched.h`, `hal/lima/lima_device.h`, `hal/lima/lima_device.c`
-(lines 735-810), `hal/lima/MALI-STATUS.md`, `hal/lima/README-arm64.md`,
-`hal/lima/PLAN-mesa-lima.md`, `hal/lima/tests/test_lima_math.c` (style
+(lines 735-810), `docs/MALI-STATUS.md`, `docs/README-arm64.md`,
+`docs/PLAN-mesa-lima.md`, `hal/lima/tests/test_lima_math.c` (style
 reference only).
