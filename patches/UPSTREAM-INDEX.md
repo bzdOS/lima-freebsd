@@ -6,7 +6,8 @@ been submitted** — submission needs the author's own accounts (FreeBSD
 Bugzilla/Phabricator, the drm-kmod GitHub repo, the ports tree).
 
 This file exists so that sending them is an afternoon of clerical work rather
-than a re-derivation. Order within a tree is the order they must be applied.
+than a re-derivation. **`SUBMISSION-KIT.md` is the outbox**: the titles and
+bodies to paste, per destination, in the order to send them. Order within a tree is the order they must be applied.
 
 ## `freebsd-src` — 5 fixes
 
