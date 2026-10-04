@@ -39,7 +39,7 @@ cannot determine), so a plain build is enough.
 
 ---
 
-## `drm-kmod-dev-alias-lifecycle.patch`
+## `0002-drm_dev_alias-destroy-the-alias-cdev-do-not-leak-it.patch`
 
 **A failed DRM probe leaked its `/dev/dri` node, and the retry panicked the
 kernel.**
@@ -99,7 +99,7 @@ has no drm-kmod contribution path set up and the fix is needed here now.
 
 ---
 
-## `drm-kmod-dma-buf-mmap.patch`
+## `0001-dmabuf-add-dma_buf_mmap.patch`
 
 **Imported PRIME buffers could not be `mmap()`ed: drm-kmod's dmabuf had no
 `dma_buf_mmap()`.**

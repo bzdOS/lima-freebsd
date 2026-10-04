@@ -1,0 +1,41 @@
+From e1567aa25c0e29d04f9a258221b06821e1aac653 Mon Sep 17 00:00:00 2001
+From: Andrey Bodrov <ap.bodrov@gmail.com>
+Date: Sat, 26 Sep 2026 15:54:45 +0300
+Subject: [PATCH 5/5] drm_debugfs_cleanup: free the hw.dri sysctl tree even
+ without debugfs
+
+Backport of the behaviour current master already has
+(drm_debugfs_unregister() calls drm_sysctl_cleanup() unconditionally): the
+tree is created whether or not debugfs exists, so it must be freed the same
+way.
+---
+ drivers/gpu/drm/drm_debugfs.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/drm_debugfs.c b/drivers/gpu/drm/drm_debugfs.c
+index e8bea2ab16..7505a5cb7f 100644
+--- a/drivers/gpu/drm/drm_debugfs.c
++++ b/drivers/gpu/drm/drm_debugfs.c
+@@ -367,13 +367,15 @@ static void drm_debugfs_remove_all_files(struct drm_minor *minor)
+ 
+ void drm_debugfs_cleanup(struct drm_minor *minor)
+ {
+-	if (!minor->debugfs_root)
+-		return;
+-
+-	/* NOTE Linux<->FreeBSD: Mesa needs the hw.dri sysctl tree. */
++	/* NOTE Linux<->FreeBSD: Mesa needs the hw.dri sysctl tree. Created
++	 * whether or not debugfs is there, so freed the same way (as in
++	 * current drm-kmod master). */
+ #ifdef __FreeBSD__
+ 	drm_sysctl_cleanup(minor->dev);
+ #endif
++	if (!minor->debugfs_root)
++		return;
++
+ 	drm_debugfs_remove_all_files(minor);
+ 
+ 	debugfs_remove_recursive(minor->debugfs_root);
+-- 
+2.55.0
+

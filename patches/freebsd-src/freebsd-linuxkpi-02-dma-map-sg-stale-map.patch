@@ -1,0 +1,76 @@
+From 2a8fdd4d28ee0633e741639c2e127b66a211c5df Mon Sep 17 00:00:00 2001
+From: Andrey Bodrov <ap.bodrov@gmail.com>
+Date: Sun, 4 Oct 2026 19:52:43 +0300
+Subject: [PATCH 2/2] linuxkpi: do not leave a stale map in sgl->dma_map on
+ dma_map_sg() failure
+
+linux_dma_map_sg_attrs() returns 0 on failure but can leave
+sgl->dma_map pointing at garbage:
+
+ - bounce_bus_dmamap_create() returns ENOMEM from its dmat->segments
+   allocation without writing *mapp, and frees the map without clearing
+   *mapp when alloc_bounce_zone() fails;
+ - the _bus_dmamap_load_phys() failure path destroys the map but leaves
+   the pointer in place.
+
+linux_dma_unmap_sg_attrs() uses sgl->dma_map unchecked, so a driver
+whose error path unmaps after a failed map (the lima port on drm-kmod
+does) ends up in bus_dmamap_sync() on a stale pointer:
+
+	far 0x1  esr 0x96000004
+	elr bounce_bus_dmamap_sync+0x34c
+	lr  linux_dma_unmap_sg_attrs+0xac
+
+Clear sgl->dma_map on every failure path and after a successful unmap,
+and return early from unmap when it is NULL, which also makes a double
+unmap harmless.
+
+Tested on: Allwinner A64 (Banana Pi M64), FreeBSD 15.1 arm64,
+drm-kmod + lima.
+---
+ sys/compat/linuxkpi/common/src/linux_pci.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/sys/compat/linuxkpi/common/src/linux_pci.c b/sys/compat/linuxkpi/common/src/linux_pci.c
+index 1609be7..5f136cf 100644
+--- a/sys/compat/linuxkpi/common/src/linux_pci.c
++++ b/sys/compat/linuxkpi/common/src/linux_pci.c
+@@ -2122,6 +2122,8 @@ linux_dma_map_sg_attrs(struct device *dev, struct scatterlist *sgl, int nents,
+ 
+ 	/* create common DMA map in the first S/G entry */
+ 	if (bus_dmamap_create(priv->dmat, 0, &sgl->dma_map) != 0) {
++		/* bus_dmamap_create() may fail without writing the map. */
++		sgl->dma_map = NULL;
+ 		DMA_PRIV_UNLOCK(priv);
+ 		return (0);
+ 	}
+@@ -2134,6 +2136,7 @@ linux_dma_map_sg_attrs(struct device *dev, struct scatterlist *sgl, int nents,
+ 		    &seg, &nseg) != 0) {
+ 			bus_dmamap_unload(priv->dmat, sgl->dma_map);
+ 			bus_dmamap_destroy(priv->dmat, sgl->dma_map);
++			sgl->dma_map = NULL;
+ 			DMA_PRIV_UNLOCK(priv);
+ 			return (0);
+ 		}
+@@ -2177,6 +2180,10 @@ linux_dma_unmap_sg_attrs(struct device *dev, struct scatterlist *sgl,
+ 
+ 	priv = dev->dma_priv;
+ 
++	/* Nothing to do if the map failed or was already unmapped. */
++	if (sgl->dma_map == NULL)
++		return;
++
+ 	DMA_PRIV_LOCK(priv);
+ 
+ 	if ((attrs & DMA_ATTR_SKIP_CPU_SYNC) != 0)
+@@ -2200,6 +2207,7 @@ linux_dma_unmap_sg_attrs(struct device *dev, struct scatterlist *sgl,
+ 
+ 	bus_dmamap_unload(priv->dmat, sgl->dma_map);
+ 	bus_dmamap_destroy(priv->dmat, sgl->dma_map);
++	sgl->dma_map = NULL;
+ 	DMA_PRIV_UNLOCK(priv);
+ }
+ 
+-- 
+2.55.0
+

@@ -1,5 +1,10 @@
 # Submission kit — ready to send
 
+> **2026-10-04: mostly sent.** drm-kmod went in as PRs #512–#515 (two merged),
+> the LinuxKPI `dma_map_sg()` fixes went to bz@, and the `dma_alloc_coherent()`
+> one is held back. Current status is at the top of `UPSTREAM-INDEX.md`. The
+> text below is kept as written; patch file names are updated.
+
 Ten patches, three destinations. This file is the *sending* document: titles and
 bodies to paste, in the order to send them, with the reasoning already written.
 `UPSTREAM-INDEX.md` is the inventory; this is the outbox.
@@ -17,7 +22,7 @@ in shipped code. Everything else is a porting fix and can wait a week.
 **Where:** <https://github.com/freebsd/drm-kmod> — open an issue, then a PR
 referencing it. This repo does not go through Bugzilla.
 
-**Attach:** `drm-kmod/drm-kmod-dri-sysctl-lifecycle.patch`
+**Attach:** `drm-kmod/0003-drm_sysctl-keep-the-shared-hw.dri-nodes-static-out-o.patch`
 
 **Title:**
 
@@ -73,8 +78,8 @@ referencing it. This repo does not go through Bugzilla.
 **Where:** same repo, one PR each (or one PR with three commits; ask the
 maintainers' preference in the issue above).
 
-**Attach / order:** `drm-kmod-dma-buf-mmap.patch`,
-`drm-kmod-dev-alias-lifecycle.patch`, then `drm-kmod-nonpci-busid.patch`
+**Attach / order:** `0001-dmabuf-add-dma_buf_mmap.patch`,
+`0002-drm_dev_alias-destroy-the-alias-cdev-do-not-leak-it.patch`, then `0004-drm_sysctl_init-do-not-assume-every-DRM-device-is-PC.patch`
 (this one touches the same function as #1, so it goes after it).
 
 **Titles and one-line summaries:**
@@ -104,8 +109,9 @@ maintainers' preference in the issue above).
 component **kern**. Cc `freebsd-x11@FreeBSD.org` (graphics/LinuxKPI territory).
 Consider Phabricator <https://reviews.freebsd.org> for review first.
 
-**Attach, in order:** `freebsd-linuxkpi-01-dma-map-sg-multipage.patch`, then
-`freebsd-linuxkpi-02-dma-alloc-coherent-memattr.patch`. Applied in that order to
+**Attach, in order:** `freebsd-linuxkpi-01-dma-map-sg-nsegments.patch`,
+`freebsd-linuxkpi-02-dma-map-sg-stale-map.patch`, then (local only)
+`LOCAL-freebsd-linuxkpi-dma-alloc-coherent-memattr.patch`. Applied in that order to
 `134a4b503^` they reproduce the committed tree byte-for-byte.
 
 **Title:**

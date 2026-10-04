@@ -1,0 +1,141 @@
+From 256a24813c7149c697b0176cc448a2b474aff3ae Mon Sep 17 00:00:00 2001
+From: Andrey Bodrov <ap.bodrov@gmail.com>
+Date: Sat, 26 Sep 2026 14:56:04 +0300
+Subject: [PATCH 3/5] drm_sysctl: keep the shared hw.dri nodes static, out of
+ the device context
+
+hw.dri is a static node of drm.ko (drm_os_freebsd.c), but drm_sysctl_init()
+also added it with SYSCTL_ADD_NODE() into the per-device context. That finds
+the existing node, bumps its refcount and records it in the context. On
+unload sysctl_ctx_free() then tries to remove it, which fails for a static
+(non-CTLFLAG_DYN) OID; the whole free returns EBUSY having removed nothing,
+and drm_sysctl_cleanup() frees the drm_sysctl_info anyway. Every driver
+unload therefore left hw.dri.<N> registered with its handlers' arg1 pointing
+at the freed drm_device, and the next full walk of the tree -- an
+unprivileged `sysctl -a`, or Mesa reading hw.dri.<N>.busid -- used it:
+
+  panic: vm_fault failed: 0xffff0000005374b8 error 1
+
+Use the static node directly and declare the two shared leaves statically
+too, so they live exactly as long as drm.ko; only hw.dri.<N> stays in the
+device's context. The dynamic "debug" leaf is dropped: drm.ko's own
+module_param_named(debug, ...) already provides hw.dri.debug, so the add
+has always failed with "sysctl_add_oid: can't re-use a leaf (hw.dri.debug)!"
+on every attach.
+
+The context now starts empty, so initialise it: the ENOSPC path calls
+drm_sysctl_cleanup() before anything was added, and sysctl_ctx_free() on a
+zero-filled (never sysctl_ctx_init()ed) list dereferences its NULL tqh_last.
+
+Tested on FreeBSD 15.1/arm64 (Allwinner A64, lima): three cycles of
+kldunload lima / `su -m nobody -c 'sysctl -a'` / kldload lima -- no
+hw.dri.<N> left behind, no panic, no leaf-reuse warning, and a Mesa GL
+client renders after the reloads.
+---
+ drivers/gpu/drm/drm_sysctl_freebsd.c | 46 ++++++++++++++--------------
+ 1 file changed, 23 insertions(+), 23 deletions(-)
+
+diff --git a/drivers/gpu/drm/drm_sysctl_freebsd.c b/drivers/gpu/drm/drm_sysctl_freebsd.c
+index b9eca7a53c..17239a045f 100644
+--- a/drivers/gpu/drm/drm_sysctl_freebsd.c
++++ b/drivers/gpu/drm/drm_sysctl_freebsd.c
+@@ -43,12 +43,23 @@ static int drm_add_busid_modesetting(struct drm_device *dev, struct sysctl_ctx_l
+ 	   struct sysctl_oid *top);
+ 
+ SYSCTL_DECL(_hw_drm);
++SYSCTL_DECL(_hw_dri);
+ 
+ #define DRM_SYSCTL_HANDLER_ARGS	(SYSCTL_HANDLER_ARGS)
+ 
+ extern int drm_vblank_offdelay;
+ extern unsigned int drm_timestamp_precision;
+ 
++/*
++ * hw.dri itself is a static node of this module (drm_os_freebsd.c), and so
++ * are these two leaves: they describe drm.ko, not any one device, and must
++ * live exactly as long as drm.ko does.
++ */
++SYSCTL_INT(_hw_dri, OID_AUTO, vblank_offdelay, CTLFLAG_RW,
++    &drm_vblank_offdelay, 0, "");
++SYSCTL_UINT(_hw_dri, OID_AUTO, timestamp_precision, CTLFLAG_RW,
++    &drm_timestamp_precision, 0, "");
++
+ static int	   drm_name_info DRM_SYSCTL_HANDLER_ARGS;
+ static int	   drm_clients_info DRM_SYSCTL_HANDLER_ARGS;
+ static int	   drm_vblank_info DRM_SYSCTL_HANDLER_ARGS;
+@@ -73,27 +84,27 @@ drm_sysctl_init(struct drm_device *dev)
+ {
+ 	struct drm_sysctl_info *info;
+ 	struct sysctl_oid *oid;
+-	struct sysctl_oid *top, *drioid;
++	struct sysctl_oid *top;
+ 	int		  i;
+ 
+ 	info = malloc(sizeof *info, DRM_MEM_DRIVER, M_WAITOK | M_ZERO);
++	sysctl_ctx_init(&info->ctx);
+ 	dev->sysctl = info;
+ 
+-	/* Add the sysctl node for DRI if it doesn't already exist */
+-	drioid = SYSCTL_ADD_NODE(&info->ctx, SYSCTL_CHILDREN(&sysctl___hw), OID_AUTO,
+-	    "dri", CTLFLAG_RW, NULL, "DRI Graphics");
+-	if (!drioid) {
+-		free(dev->sysctl, DRM_MEM_DRIVER);
+-		dev->sysctl = NULL;
+-		return (-ENOMEM);
+-	}
++	/*
++	 * Only this device's own hw.dri.<N> subtree goes into its context.
++	 * hw.dri is static; claiming it here (as SYSCTL_ADD_NODE on an existing
++	 * node does) made sysctl_ctx_free() fail with EBUSY on every unload --
++	 * a static OID cannot be removed -- having removed nothing, after which
++	 * the hw.dri.<N> OIDs pointed into freed memory.
++	 */
+ 
+ 	/* Find the next free slot under hw.dri */
+ 	i = 0;
+ #ifdef SYSCTL_FOREACH
+-	SYSCTL_FOREACH(oid, SYSCTL_CHILDREN(drioid))
++	SYSCTL_FOREACH(oid, SYSCTL_STATIC_CHILDREN(_hw_dri))
+ #else
+-	SLIST_FOREACH(oid, SYSCTL_CHILDREN(drioid), oid_link)
++	SLIST_FOREACH(oid, SYSCTL_STATIC_CHILDREN(_hw_dri), oid_link)
+ #endif
+ 	{
+ 		if (i == oid->oid_name[0] - '0' && oid->oid_name[1] == 0)
+@@ -108,7 +119,7 @@ drm_sysctl_init(struct drm_device *dev)
+ 	/* Add the hw.dri.x for our device */
+ 	info->name[0] = '0' + i;
+ 	info->name[1] = 0;
+-	top = SYSCTL_ADD_NODE(&info->ctx, SYSCTL_CHILDREN(drioid),
++	top = SYSCTL_ADD_NODE(&info->ctx, SYSCTL_STATIC_CHILDREN(_hw_dri),
+ 	    OID_AUTO, info->name, CTLFLAG_RW, NULL, NULL);
+ 	if (!top) {
+ 		drm_sysctl_cleanup(dev);
+@@ -131,8 +142,6 @@ drm_sysctl_init(struct drm_device *dev)
+ 			return (-ENOMEM);
+ 		}
+ 	}
+-	SYSCTL_ADD_LONG(&info->ctx, SYSCTL_CHILDREN(drioid), OID_AUTO, "debug",
+-	    CTLFLAG_RW, &__drm_debug, "Enable debugging output");
+ #ifdef notyet
+ 	if (dev->driver->sysctl_init != NULL)
+ 		dev->driver->sysctl_init(dev, &info->ctx, top);
+@@ -140,15 +149,6 @@ drm_sysctl_init(struct drm_device *dev)
+ 
+ 	drm_add_busid_modesetting(dev, &info->ctx, top);
+ 
+-	SYSCTL_ADD_INT(&info->ctx, SYSCTL_CHILDREN(drioid), OID_AUTO,
+-	    "vblank_offdelay", CTLFLAG_RW, &drm_vblank_offdelay,
+-	    sizeof(drm_vblank_offdelay),
+-	    "");
+-	SYSCTL_ADD_INT(&info->ctx, SYSCTL_CHILDREN(drioid), OID_AUTO,
+-	    "timestamp_precision", CTLFLAG_RW, &drm_timestamp_precision,
+-	    sizeof(drm_timestamp_precision),
+-	    "");
+-
+ 	return (0);
+ }
+ 
+-- 
+2.55.0
+

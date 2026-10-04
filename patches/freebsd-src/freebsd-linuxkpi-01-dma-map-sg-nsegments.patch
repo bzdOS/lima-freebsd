@@ -1,0 +1,69 @@
+From cf87d3e489ca627ec568fe5c1a702a53dcd46e02 Mon Sep 17 00:00:00 2001
+From: Andrey Bodrov <ap.bodrov@gmail.com>
+Date: Sun, 4 Oct 2026 19:51:45 +0300
+Subject: [PATCH 1/2] linuxkpi: allow multi-segment dma_map_sg() on
+ non-coherent platforms
+
+The LinuxKPI DMA tag is created with nsegments = 1. On a non-coherent
+map, busdma bounds the per-map sync list by nsegments, and the count
+accumulates across loads into the same map:
+
+	if (map->sync_count == 0 || curaddr != sl_end) {
+		if (++map->sync_count > dmat->common.nsegments)
+			break;		/* -> EFBIG */
+
+linux_dma_map_sg_attrs() loads every S/G entry into one shared map, so
+entry 0 takes the only slot and the first discontiguous entry fails.
+dma_map_sg() then returns 0 for any physically scattered list.  Coherent
+maps never touch the counter, which is why this only shows up on
+non-coherent devices, i.e. most arm64 SoC GPUs.
+
+Seen with drm-kmod and lima (Mali-400) on an Allwinner A64:
+
+	load_phys failed err=27 (EFBIG) i=1/64
+
+on the second entry of every 64-page buffer, surfacing in userland as
+EGL_BAD_ALLOC from eglCreateContext.
+
+Raise nsegments to 1024.  It also sizes each map allocation, but the
+sync list only grows on a discontiguity, and 1024 entries (32 KiB per
+map) cover a fully fragmented 4 MiB list.
+
+Tested on: Allwinner A64 (Banana Pi M64), FreeBSD 15.1 arm64,
+drm-kmod + lima, Mesa 26.2.
+---
+ sys/compat/linuxkpi/common/src/linux_pci.c | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/sys/compat/linuxkpi/common/src/linux_pci.c b/sys/compat/linuxkpi/common/src/linux_pci.c
+index fbfde94..1609be7 100644
+--- a/sys/compat/linuxkpi/common/src/linux_pci.c
++++ b/sys/compat/linuxkpi/common/src/linux_pci.c
+@@ -223,6 +223,15 @@ linux_pdev_dma_init(struct pci_dev *pdev)
+ 	return (error);
+ }
+ 
++/*
++ * busdma bounds a non-coherent map's sync list by nsegments, and
++ * linux_dma_map_sg_attrs() loads every S/G entry into one map, so with
++ * nsegments == 1 any physically discontiguous S/G list fails with EFBIG.
++ * The sync list only grows on a discontiguity; 1024 covers a fully
++ * fragmented 4 MiB list.
++ */
++#define	LINUX_DMA_TAG_NSEGMENTS	1024
++
+ int
+ linux_dma_tag_init(struct device *dev, u64 dma_mask)
+ {
+@@ -246,7 +255,7 @@ linux_dma_tag_init(struct device *dev, u64 dma_mask)
+ 	    BUS_SPACE_MAXADDR,		/* highaddr */
+ 	    NULL, NULL,			/* filtfunc, filtfuncarg */
+ 	    BUS_SPACE_MAXSIZE,		/* maxsize */
+-	    1,				/* nsegments */
++	    LINUX_DMA_TAG_NSEGMENTS,	/* nsegments */
+ 	    BUS_SPACE_MAXSIZE,		/* maxsegsz */
+ 	    0,				/* flags */
+ 	    NULL, NULL,			/* lockfunc, lockfuncarg */
+-- 
+2.55.0
+

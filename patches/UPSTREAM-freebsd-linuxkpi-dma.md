@@ -1,13 +1,22 @@
 # Upstream: two LinuxKPI DMA defects on non-coherent arm64
 
-**Status: NOT SUBMITTED.** Written up here so submission is a send, not a
-research project. Submitting needs the author's own FreeBSD accounts.
+**Status (2026-10-04):** the `dma_map_sg()` fixes (§2 below) were sent to bz@
+as two commits on main:
+<https://github.com/apbodrov/freebsd-src/compare/a5b1b2d...linuxkpi-dma>
+(`freebsd-src/freebsd-linuxkpi-01-dma-map-sg-nsegments.patch`,
+`freebsd-src/freebsd-linuxkpi-02-dma-map-sg-stale-map.patch`).
+The `dma_alloc_coherent()` fix (§1) stays local as
+`freebsd-src/LOCAL-freebsd-linuxkpi-dma-alloc-coherent-memattr.patch`: it is
+needed on the A64, but forcing uncacheable memory on every arm64 device would
+also hit dma-coherent ones. Upstream it should go through
+`bus_dmamem_alloc(..., BUS_DMA_COHERENT)`, which already makes that choice per
+tag. The text below is the original August write-up.
 
 | | |
 |---|---|
 | Tree | `freebsd-src`, `releng/15.1` (reproduced on 15.1-RELEASE) |
 | File | `sys/compat/linuxkpi/common/src/linux_pci.c` |
-| Patches | `freebsd-src/freebsd-linuxkpi-01-dma-map-sg-multipage.patch`, then `freebsd-src/freebsd-linuxkpi-02-dma-alloc-coherent-memattr.patch` — **in that order** (verified: applied in sequence to `134a4b503^` they reproduce the committed tree byte-for-byte) |
+| Patches | `freebsd-src/freebsd-linuxkpi-01-dma-map-sg-nsegments.patch`, `freebsd-src/freebsd-linuxkpi-02-dma-map-sg-stale-map.patch`, then `freebsd-src/LOCAL-freebsd-linuxkpi-dma-alloc-coherent-memattr.patch` — in that order (verified to apply to main `a5b1b2d`) |
 | Commits | `134a4b503`, `39090bd6f` on branch `linuxkpi-dma-fix` |
 | Hardware | Banana Pi M64 (Allwinner A64, Cortex-A53), Mali-400 MP2 via drm-kmod + Mesa/lima |
 | Blast radius | Every non-coherent-DMA platform — i.e. essentially every arm64 SoC GPU. x86 cannot observe either bug. |

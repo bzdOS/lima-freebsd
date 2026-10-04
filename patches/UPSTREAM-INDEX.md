@@ -1,9 +1,35 @@
 # Upstream submission index
 
 Ten distinct third-party defects were found while porting lima to
-FreeBSD/arm64. Every one is fixed, every fix has a patch file, and **none has
-been submitted** — submission needs the author's own accounts (FreeBSD
-Bugzilla/Phabricator, the drm-kmod GitHub repo, the ports tree).
+FreeBSD/arm64. Every one is fixed and every fix has a patch file.
+
+## Status (2026-10-04)
+
+| # | Where | Status |
+|---|---|---|
+| 9 | [drm-kmod#512](https://github.com/freebsd/drm-kmod/pull/512) | **merged** 2026-10-03 |
+| 7 | [drm-kmod#514](https://github.com/freebsd/drm-kmod/pull/514) | **merged** 2026-10-03 |
+| 6 | [drm-kmod#513](https://github.com/freebsd/drm-kmod/pull/513) | open |
+| 8 | [drm-kmod#515](https://github.com/freebsd/drm-kmod/pull/515) | open; for PCI GPUs it needs [D60138](https://reviews.freebsd.org/D60138) (`dev_is_pci()` for drmn devices) |
+| 1 | LinuxKPI, sent to bz@ as [two commits on main](https://github.com/apbodrov/freebsd-src/compare/a5b1b2d...linuxkpi-dma) | sent |
+| 2 | LinuxKPI | **not sent in this form**, see below |
+| 3, 5 | [freebsd-src#2447](https://github.com/freebsd/freebsd-src/pull/2447), [#2448](https://github.com/freebsd/freebsd-src/pull/2448) | open |
+
+`drm-kmod/0001`–`0004` are `git format-patch` of the PR commits, `0005` is a
+backport of a fix drm-kmod master already has. The board runs exactly these.
+
+#1 is split into two commits for review (`freebsd-linuxkpi-01-…-nsegments`,
+`freebsd-linuxkpi-02-…-stale-map`), with the diagnostics dropped.
+
+#2 (`LOCAL-freebsd-linuxkpi-dma-alloc-coherent-memattr.patch`) is still
+**required** to render on the A64, but it makes `dma_alloc_coherent()`
+uncacheable for every arm64 device, dma-coherent ones included. The upstream
+version should let busdma decide: `bus_dmamem_alloc(..., BUS_DMA_COHERENT)`
+already picks uncacheable memory only for non-coherent tags. Apply it after
+the two LinuxKPI commits.
+
+The sections below are the original August inventory; file names are updated.
+
 
 This file exists so that sending them is an afternoon of clerical work rather
 than a re-derivation. **`SUBMISSION-KIT.md` is the outbox**: the titles and
@@ -13,8 +39,8 @@ bodies to paste, per destination, in the order to send them. Order within a tree
 
 | # | Fix | Patch | Write-up | Needed for this board? |
 |---|---|---|---|---|
-| 1 | `dma_map_sg()` cannot map a multi-page list on non-coherent arm64 (`nsegments=1` vs busdma's accumulating `sync_count`), **plus** stale `sgl->dma_map` on three error paths that unmap then dereferences | `freebsd-src/freebsd-linuxkpi-01-dma-map-sg-multipage.patch` | `UPSTREAM-freebsd-linuxkpi-dma.md` | **yes** |
-| 2 | `dma_alloc_coherent()` returned CACHEABLE memory on arm64 — the one allocator that promises no cache maintenance | `freebsd-src/freebsd-linuxkpi-02-dma-alloc-coherent-memattr.patch` | same doc | **yes** — this is the fix that produced the first frame |
+| 1 | `dma_map_sg()` cannot map a multi-page list on non-coherent arm64 (`nsegments=1` vs busdma's accumulating `sync_count`), **plus** stale `sgl->dma_map` on three error paths that unmap then dereferences | `freebsd-src/freebsd-linuxkpi-01-dma-map-sg-nsegments.patch` + `freebsd-linuxkpi-02-dma-map-sg-stale-map.patch` | `UPSTREAM-freebsd-linuxkpi-dma.md` | **yes** |
+| 2 | `dma_alloc_coherent()` returned CACHEABLE memory on arm64 — the one allocator that promises no cache maintenance | `freebsd-src/LOCAL-freebsd-linuxkpi-dma-alloc-coherent-memattr.patch` | same doc | **yes** — this is the fix that produced the first frame |
 | 3 | `ccu_a64.c`'s `pll_gpu_clk` declares a gate bit but omits `AW_CLK_HAS_GATE`, so `clk_enable()` silently no-ops | `freebsd-src/freebsd-ccu-a64-pll-gpu.patch` | `UPSTREAM-freebsd-ccu-a64-pll-gpu.md` | **yes** — without it the GPU cannot be clocked at all |
 | 4 | `FRAC_CLK`/`NKMP_CLK`/`M_CLK` clknodes had no `get_gate` method at all (7 files) | `freebsd-src/freebsd-allwinner-clk-get-gate.patch` | `freebsd-allwinner-clk-gate-audit.md` | yes — it is the diagnostic that found #3 |
 | 5 | `aw_ccung` transposed gate/lock args on A83T CPUX PLLs | `freebsd-src/freebsd-ccu-a83t-cpux-gate-lock.patch` | `UPSTREAM-freebsd-ccu-a83t-cpux-gate-lock.md` | no — A83T is a different SoC; carried for upstream only |
@@ -26,10 +52,10 @@ and of each other.
 
 | # | Fix | Patch | Write-up | Needed for this board? |
 |---|---|---|---|---|
-| 6 | dmabuf had no `dma_buf_mmap()`, so imported PRIME buffers could not be `mmap()`ed | `drm-kmod/drm-kmod-dma-buf-mmap.patch` | prose section in `README.md` | **yes** — a build prerequisite: without it `drm_gem_shmem_helper.c` does not compile |
-| 7 | `drm_dev_alias()` leaks its `/dev/dri` cdev; the next alloc of the same minor panics in `make_dev_alias_v()` | `drm-kmod/drm-kmod-dev-alias-lifecycle.patch` | `UPSTREAM-drm-kmod-dev-alias.md` | **yes** |
-| 8 | `drm_add_busid_modesetting()` dereferences `pdev->bus->number` through a struct that is not a `pci_dev` — panics (`far=0x8`) on **any** platform DRM driver. Fallback busid also has to be unique per device or Mesa's loader cannot tell two DRM devices apart | `drm-kmod/drm-kmod-nonpci-busid.patch` | 50-line header in the patch | **yes** |
-| 9 | `hw.dri` sysctl lifecycle: the shared node was put in a per-device context, so `sysctl_ctx_free()` failed with EBUSY and removed nothing while cleanup freed the struct those OIDs point into. Consequences: GL broken after any driver reload until reboot, **and an unprivileged `sysctl -a` panics the kernel** | `drm-kmod/drm-kmod-dri-sysctl-lifecycle.patch` | 60-line header in the patch | **yes** |
+| 6 | dmabuf had no `dma_buf_mmap()`, so imported PRIME buffers could not be `mmap()`ed | `drm-kmod/0001-dmabuf-add-dma_buf_mmap.patch` | prose section in `README.md` | **yes** — a build prerequisite: without it `drm_gem_shmem_helper.c` does not compile |
+| 7 | `drm_dev_alias()` leaks its `/dev/dri` cdev; the next alloc of the same minor panics in `make_dev_alias_v()` | `drm-kmod/0002-drm_dev_alias-destroy-the-alias-cdev-do-not-leak-it.patch` | `UPSTREAM-drm-kmod-dev-alias.md` | **yes** |
+| 8 | `drm_add_busid_modesetting()` dereferences `pdev->bus->number` through a struct that is not a `pci_dev` — panics (`far=0x8`) on **any** platform DRM driver. Fallback busid also has to be unique per device or Mesa's loader cannot tell two DRM devices apart | `drm-kmod/0004-drm_sysctl_init-do-not-assume-every-DRM-device-is-PC.patch` | 50-line header in the patch | **yes** |
+| 9 | `hw.dri` sysctl lifecycle: the shared node was put in a per-device context, so `sysctl_ctx_free()` failed with EBUSY and removed nothing while cleanup freed the struct those OIDs point into. Consequences: GL broken after any driver reload until reboot, **and an unprivileged `sysctl -a` panics the kernel** | `drm-kmod/0003-drm_sysctl-keep-the-shared-hw.dri-nodes-static-out-o.patch` | 60-line header in the patch | **yes** |
 
 **#9 is the one to send first.** It is a local denial of service reachable by
 any user with a shell, on any FreeBSD machine running a DRM driver where

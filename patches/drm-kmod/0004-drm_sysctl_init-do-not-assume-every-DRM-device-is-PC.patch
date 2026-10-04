@@ -1,0 +1,57 @@
+From 3ac2f1988b686d5b9a6c672f21b05922b879798a Mon Sep 17 00:00:00 2001
+From: Andrey Bodrov <ap.bodrov@gmail.com>
+Date: Sun, 20 Sep 2026 13:41:49 +0300
+Subject: [PATCH] drm_sysctl_init: do not assume every DRM device is PCI
+
+drm_add_busid_modesetting() dereferences pdev->bus->number through a struct
+that is not a pci_dev, panicking with far=0x8 on any platform DRM driver.
+The fallback busid also has to be unique per device, or Mesa's loader cannot
+tell two DRM devices apart.
+
+For PCI GPUs this relies on dev_is_pci() recognising drmn devices, which
+attach to pci through vgapci: https://reviews.freebsd.org/D60138
+---
+ drivers/gpu/drm/drm_sysctl_freebsd.c | 26 ++++++++++++++++++--------
+ 1 file changed, 18 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/gpu/drm/drm_sysctl_freebsd.c b/drivers/gpu/drm/drm_sysctl_freebsd.c
+index 8a30c59..1ddcbc0 100644
+--- a/drivers/gpu/drm/drm_sysctl_freebsd.c
++++ b/drivers/gpu/drm/drm_sysctl_freebsd.c
+@@ -171,15 +171,25 @@ drm_add_busid_modesetting(struct drm_device *dev, struct sysctl_ctx_list *ctx,
+ {
+ 	struct sysctl_oid *oid;
+ 	int domain, bus, slot, func;
+-	struct pci_dev *pdev = to_pci_dev(dev->dev);
+ 
+-	domain = pci_domain_nr(pdev->bus);
+-	bus    = pdev->bus->number;
+-	slot   = PCI_SLOT(pdev->devfn);
+-	func   = PCI_FUNC(pdev->devfn);
+-
+-	snprintf(dev->busid_str, sizeof(dev->busid_str),
+-	    "pci:%04x:%02x:%02x.%d", domain, bus, slot, func);
++	if (dev_is_pci(dev->dev)) {
++		struct pci_dev *pdev = to_pci_dev(dev->dev);
++
++		domain = pci_domain_nr(pdev->bus);
++		bus    = pdev->bus->number;
++		slot   = PCI_SLOT(pdev->devfn);
++		func   = PCI_FUNC(pdev->devfn);
++		snprintf(dev->busid_str, sizeof(dev->busid_str),
++		    "pci:%04x:%02x:%02x.%d", domain, bus, slot, func);
++	} else {
++		/*
++		 * Keep the PCI shape: Mesa's loader parses the busid and has no
++		 * platform-device path on FreeBSD. Use the hw.dri.<N> index as
++		 * the device number so that two DRM devices never share a busid.
++		 */
++		snprintf(dev->busid_str, sizeof(dev->busid_str),
++		    "pci:0000:00:%02x.0", dev->sysctl_node_idx & 0x1f);
++	}
+ 	oid = SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(top), OID_AUTO, "busid",
+ 	    CTLFLAG_RD, dev->busid_str, 0, NULL);
+ 	if (oid == NULL)
+-- 
+2.55.0
+

@@ -104,7 +104,8 @@ board depends on which, and where each write-up lives; four carry their
 reasoning as a header inside the patch file rather than a separate document.
 
 **One of them is not a porting fix and matters to people who have never heard of
-this driver:** `patches/drm-kmod/drm-kmod-dri-sysctl-lifecycle.patch`. drm-kmod
+this driver:** `patches/drm-kmod/0003-drm_sysctl-keep-the-shared-hw.dri-nodes-static-out-o.patch`,
+merged upstream as drm-kmod#512 on 2026-10-03. drm-kmod
 puts the shared `hw.dri` sysctl node into a per-device context, so
 `sysctl_ctx_free()` fails with EBUSY and removes nothing while cleanup frees the
 struct those OIDs point into. An **unprivileged `sysctl -a` then panics the
@@ -141,9 +142,9 @@ where debugfs is unavailable.
   to sit in readable heap memory and the bus id comes out silently garbage — a
   latent landmine, not a solution. The patch guards it with `dev_is_pci()`.
 
-None of these have been submitted upstream yet — that needs the author's own
-accounts, not more engineering. `patches/UPSTREAM-INDEX.md` exists so whoever
-sends them does not have to re-derive anything.
+Upstream status: the four drm-kmod fixes are PRs #512–#515 (two merged), and
+the LinuxKPI `dma_map_sg()` fixes went to the LinuxKPI maintainer. Details are
+at the top of `patches/UPSTREAM-INDEX.md`.
 
 ---
 

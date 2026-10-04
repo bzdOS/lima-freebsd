@@ -1,0 +1,113 @@
+From 1fd87be86f77c83c5740cbe4142a58fd6e2cfd84 Mon Sep 17 00:00:00 2001
+From: Andrey Bodrov <ap.bodrov@gmail.com>
+Date: Sun, 20 Sep 2026 13:41:49 +0300
+Subject: [PATCH 2/5] drm_dev_alias: destroy the alias cdev, do not leak it
+
+drm_dev_alias() creates a /dev/dri alias and never destroys it. The next
+allocation of the same minor panics in make_dev_alias_v().
+---
+ drivers/gpu/drm/drm_drv.c        |  5 +++++
+ drivers/gpu/drm/drm_os_freebsd.c | 34 +++++++++++++++++++++++++++++++-
+ drivers/gpu/drm/drm_os_freebsd.h |  1 +
+ include/drm/drm_file.h           |  1 +
+ 4 files changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/drm_drv.c b/drivers/gpu/drm/drm_drv.c
+index c30b8b5530..002aae9f89 100644
+--- a/drivers/gpu/drm/drm_drv.c
++++ b/drivers/gpu/drm/drm_drv.c
+@@ -105,6 +105,11 @@ static void drm_minor_alloc_release(struct drm_device *dev, void *data)
+ 
+ 	WARN_ON(dev != minor->dev);
+ 
++#ifdef __FreeBSD__
++	/* Destroy the /dev/dri alias, also on a failed probe's drm_dev_put(). */
++	drm_dev_alias_free(minor);
++#endif
++
+ 	put_device(minor->kdev);
+ 
+ 	if (minor->type == DRM_MINOR_ACCEL) {
+diff --git a/drivers/gpu/drm/drm_os_freebsd.c b/drivers/gpu/drm/drm_os_freebsd.c
+index bf10cbf745..5a1defe9dc 100644
+--- a/drivers/gpu/drm/drm_os_freebsd.c
++++ b/drivers/gpu/drm/drm_os_freebsd.c
+@@ -123,6 +123,7 @@ drm_dev_alias(struct device *ldev, struct drm_minor *minor, const char *minor_st
+ 	device_t dev = ldev->parent->bsddev;
+ 	char buf[32];
+ 	u32 tmp;
++	int error;
+ 
+ 	MPASS(dev != NULL);
+ 	ctx_list = device_get_sysctl_ctx(dev);
+@@ -146,11 +147,42 @@ drm_dev_alias(struct device *ldev, struct drm_minor *minor, const char *minor_st
+ 	if (cdevp == NULL)
+ 		return (-ENXIO);
+ 	minor->bsd_device = cdevp->cdev;
+-	make_dev_alias(cdevp->cdev, buf, minor->index);
++
++	/*
++	 * MAKEDEV_CHECKNAME: make_dev_alias() panics on an existing name.
++	 * Keep the alias so drm_dev_alias_free() can destroy it. buf is a
++	 * format ("dri/renderD%d"); the index is substituted here.
++	 */
++	error = make_dev_alias_p(MAKEDEV_CHECKNAME, &minor->bsd_alias,
++	    cdevp->cdev, buf, minor->index);
++	if (error != 0) {
++		minor->bsd_alias = NULL;
++		minor->bsd_device = NULL;
++		return (-error);
++	}
++
+ 	reset_debug_log();
+ 	return (0);
+ }
+ 
++/*
++ * Destroy the alias created by drm_dev_alias(), if any. Idempotent. Called
++ * from drm_minor_alloc_release() when the drm_device is released.
++ */
++void
++drm_dev_alias_free(struct drm_minor *minor)
++{
++	struct cdev *alias;
++
++	if (minor == NULL)
++		return;
++	alias = minor->bsd_alias;
++	if (alias == NULL)
++		return;
++	minor->bsd_alias = NULL;
++	destroy_dev(alias);
++}
++
+ static int
+ drm_modevent(module_t mod, int type, void *data)
+ {
+diff --git a/drivers/gpu/drm/drm_os_freebsd.h b/drivers/gpu/drm/drm_os_freebsd.h
+index 4426a3af4a..952ee5f429 100644
+--- a/drivers/gpu/drm/drm_os_freebsd.h
++++ b/drivers/gpu/drm/drm_os_freebsd.h
+@@ -33,6 +33,7 @@ extern int skip_ddb;
+ 
+ struct drm_minor;
+ int drm_dev_alias(struct device *dev, struct drm_minor *minor, const char *minor_str);
++void drm_dev_alias_free(struct drm_minor *minor);
+ void cancel_reset_debug_log(void);
+ 
+ void vt_freeze_main_vd(struct apertures_struct *a);
+diff --git a/include/drm/drm_file.h b/include/drm/drm_file.h
+index 50f8340f34..b401f6184c 100644
+--- a/include/drm/drm_file.h
++++ b/include/drm/drm_file.h
+@@ -81,6 +81,7 @@ struct drm_minor {
+ 
+ #ifdef __FreeBSD__
+ 	struct cdev *bsd_device; 	/* Device number for mknod */
++	struct cdev *bsd_alias;		/* /dev/dri alias, destroyed on release */
+ #endif
+ 	struct dentry *debugfs_root;
+ 
+-- 
+2.55.0
+
