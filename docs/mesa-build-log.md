@@ -201,7 +201,7 @@ internet) — a 65 MB same-subnet `scp` did not finish in 3 minutes. Corrected
 by relaunching via host-side `nohup ... &` (survives no external kill) instead
 of a shell `timeout`, per the task brief's own guidance. No forbidden action
 resulted; the guest was not touched beyond the ordinary (harmless) partial
-file `/root/mesa-26.2.0.tar.xz` left mid-write, which the retried `scp`
+file `<root>/mesa-26.2.0.tar.xz` left mid-write, which the retried `scp`
 overwrites by default.
 
 ## 6. Guest `pkg install`, still in progress — the guest's link is genuinely slow
@@ -310,7 +310,7 @@ that "ran out of budget mid-setup" is a legitimate result to report precisely
 rather than round up:
 
 - **Mesa 26.2.0 source: fully fetched, verified, and staged on the guest.**
-  `/root/mesa-26.2.0.tar.xz`, sha256 `efd4bb08cdb7c365a812cd4e6c9202ab55b2f22cdcd13c7d6c4f9647b799a4ef`,
+  `<root>/mesa-26.2.0.tar.xz`, sha256 `efd4bb08cdb7c365a812cd4e6c9202ab55b2f22cdcd13c7d6c4f9647b799a4ef`,
   confirmed three ways (host, guest, and the prior session's independent
   fetch). Not yet cleanly extracted at the time of this write-up -- see next.
 - **Extraction: in progress, not confirmed complete.** After the §8/§9
@@ -344,9 +344,9 @@ rather than round up:
   extraction/install above are running):
   - `build_lima.sh` -- a single script that does the follow-up `pkg install`,
     checksum-reverifies the tarball, extracts, runs the exact `meson setup`
-    from §10 with output captured to `/root/meson-setup.log`, and -- only if
+    from §10 with output captured to `<root>/meson-setup.log`, and -- only if
     `build/build.ninja` actually exists afterward -- launches
-    `nohup ninja -C build > /root/ninja-build.log 2>&1 &` in the background.
+    `nohup ninja -C build > <root>/ninja-build.log 2>&1 &` in the background.
     Syntax-checked (`sh -n`) clean.
   - `lima_smoke.c` -- a minimal headless EGL/GLES2 smoke test: opens
     `/dev/dri/renderD128` directly via `gbm`, creates a GBM-platform EGL
